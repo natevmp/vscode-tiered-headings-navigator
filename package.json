@@ -1,0 +1,156 @@
+{
+  "name": "tiered-headings-navigator",
+  "displayName": "Tiered Headings Navigator",
+  "description": "Navigate user-defined, tiered inline headings in the active document.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natevmp/vscode-tiered-headings-navigator.git"
+  },
+  "engines": {
+    "vscode": "^1.74.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "headings",
+    "navigation",
+    "outline",
+    "bookmarks"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "tieredHeadings.openSettings",
+        "title": "Configure Heading Triggers",
+        "category": "Tiered Headings",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "tieredHeadings.refresh",
+        "title": "Refresh Headings",
+        "category": "Tiered Headings",
+        "icon": "$(refresh)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "tieredHeadings.explorer",
+          "name": "Tiered Headings"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "tieredHeadings.openSettings",
+          "when": "view == tieredHeadings.explorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tieredHeadings.refresh",
+          "when": "view == tieredHeadings.explorer",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Tiered Headings Navigator",
+      "type": "object",
+      "properties": {
+        "tieredHeadings.triggers": {
+          "type": "array",
+          "scope": "resource",
+          "default": [],
+          "markdownDescription": "Literal snippets that define heading levels and pane labels. Use `${after}`, `${before}`, `${line}`, `${trigger}`, or `${lineNumber}` in `labelTemplate`.",
+          "items": {
+            "type": "object",
+            "required": [
+              "snippet",
+              "level"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "snippet": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[^\\r\\n]+$",
+                "description": "Literal text that marks a heading line."
+              },
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Heading level. Level 1 is the highest tier."
+              },
+              "labelTemplate": {
+                "type": "string",
+                "default": "${after}",
+                "description": "Template used to create the heading label."
+              }
+            }
+          }
+        },
+        "tieredHeadings.caseSensitive": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Match trigger snippets using case-sensitive comparison."
+        },
+        "tieredHeadings.gutter.enabled": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Show a gutter marker beside detected heading lines."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "compile": "npm run check-types && node esbuild.mjs",
+    "compile:all": "npm run compile && npm run compile-tests",
+    "watch": "node esbuild.mjs --watch",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "test:unit": "npm run compile-tests && mocha \"out/test/unit/**/*.test.js\"",
+    "test:integration": "npm run compile && npm run compile-tests && vscode-test --label stable",
+    "test:integration:minimum": "npm run compile && npm run compile-tests && vscode-test --label minimum",
+    "test": "npm run verify",
+    "check": "npm run check-types && npm run lint && npm run test:unit",
+    "verify": "npm run check && npm run test:integration && npm run test:integration:minimum",
+    "package": "npm run verify && node esbuild.mjs --production",
+    "vsix": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.3.0",
+    "@types/vscode": "1.74.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.9.1",
+    "mocha": "^11.7.6",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.69.0"
+  }
+}

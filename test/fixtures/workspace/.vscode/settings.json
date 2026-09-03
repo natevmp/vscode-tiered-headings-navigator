@@ -1,0 +1,24 @@
+{
+  "tieredHeadings.triggers": [
+    {
+      "snippet": "@h1",
+      "level": 1,
+      "labelTemplate": "${after}"
+    },
+    {
+      "snippet": "@h2",
+      "level": 2,
+      "labelTemplate": "${after}"
+    },
+    {
+      "snippet": "@h3",
+      "level": 3,
+      "labelTemplate": "${after}"
+    },
+    {
+      "snippet": "@h4",
+      "level": 4,
+      "labelTemplate": "${after}"
+    }
+  ]
+}
