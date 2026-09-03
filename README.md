@@ -126,8 +126,10 @@ received a complete independent human audit for TypeScript correctness,
 security, provenance, or license compliance. Review and test it before relying
 on it, and report problems through the repository's issue tracker.
 
-The extension was implemented independently. Inline Bookmarks was used only as
-a functional reference; to the maintainer's knowledge, no code or assets were
+The extension was inspired by the existing VS Code extension Inline Bookmarks, 
+created by tintinweb https://github.com/tintinweb/vscode-inline-bookmarks.
+It was implemented independently and Inline Bookmarks was used only as a 
+functional reference. To the maintainer's knowledge, no code or assets were
 copied from it.
 
 ## License
