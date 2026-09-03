@@ -17,6 +17,8 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
 
   private navigationTargetByNode = new WeakMap<HeadingNode, HeadingNavigationTarget>();
 
+  public constructor(private readonly extensionUri: vscode.Uri) {}
+
   public getTreeItem(element: HeadingNode): vscode.TreeItem {
     const collapsibleState = element.heading_childId.length > 0
       ? vscode.TreeItemCollapsibleState.Expanded
@@ -26,6 +28,7 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
     item.description = `L${element.level} · ${element.line + 1}`;
     item.tooltip = `${element.sourceLine}\nLevel ${element.level}, line ${element.line + 1}`;
     item.contextValue = "tieredHeading";
+    item.iconPath = this.getHeadingIconPath(element.level);
     const navigationTarget = this.navigationTargetByNode.get(element);
     if (navigationTarget !== undefined) {
       item.command = {
@@ -35,6 +38,14 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
       };
     }
     return item;
+  }
+
+  private getHeadingIconPath(level: number): { light: vscode.Uri; dark: vscode.Uri } {
+    const iconName = level <= 3 ? `heading-${String(level)}.svg` : "heading-higher.svg";
+    return {
+      light: vscode.Uri.joinPath(this.extensionUri, "resources", "light", iconName),
+      dark: vscode.Uri.joinPath(this.extensionUri, "resources", "dark", iconName),
+    };
   }
 
   public getChildren(element?: HeadingNode): HeadingNode[] {
@@ -58,6 +69,17 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
     };
     this.heading_rootId.forEach(collectTarget);
     return target_targetId;
+  }
+
+  /** Returns native items for Extension Host presentation checks. */
+  public getTreeItemsForTesting(): readonly vscode.TreeItem[] {
+    const item_itemId: vscode.TreeItem[] = [];
+    const collectItem = (heading: HeadingNode): void => {
+      item_itemId.push(this.getTreeItem(heading));
+      heading.heading_childId.forEach(collectItem);
+    };
+    this.heading_rootId.forEach(collectItem);
+    return item_itemId;
   }
 
   public setHeadings(

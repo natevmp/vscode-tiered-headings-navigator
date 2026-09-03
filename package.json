@@ -2,7 +2,7 @@
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate user-defined, tiered inline headings in the active document.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -48,13 +48,19 @@
         "title": "Refresh Headings",
         "category": "Tiered Headings",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "tieredHeadings.showHeadings",
+        "title": "Show Headings",
+        "category": "Tiered Headings"
       }
     ],
     "views": {
       "explorer": [
         {
           "id": "tieredHeadings.explorer",
-          "name": "Tiered Headings"
+          "name": "Headings",
+          "visibility": "visible"
         }
       ]
     },
@@ -119,6 +125,50 @@
           "scope": "resource",
           "default": true,
           "description": "Show a gutter marker beside detected heading lines."
+        },
+        "tieredHeadings.editor.levelStyles": {
+          "type": "array",
+          "scope": "resource",
+          "default": [
+            {
+              "level": 1,
+              "style": "bold"
+            },
+            {
+              "level": 2,
+              "style": "boldItalic"
+            },
+            {
+              "level": 3,
+              "style": "italic"
+            }
+          ],
+          "markdownDescription": "Whole-line font styles for detected heading levels. Unlisted levels are unchanged; use an empty array to disable heading text styling.",
+          "items": {
+            "type": "object",
+            "required": [
+              "level",
+              "style"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Heading level to style."
+              },
+              "style": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "bold",
+                  "italic",
+                  "boldItalic"
+                ],
+                "description": "Font style applied to the entire detected heading line."
+              }
+            }
+          }
         }
       }
     }

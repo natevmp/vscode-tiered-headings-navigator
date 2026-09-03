@@ -29,6 +29,8 @@ interface HeadingNavigationTarget {
 const extensionId = "local.tiered-headings-navigator";
 const inspectCommand = "_tieredHeadings.getActiveSnapshot";
 const inspectTargetsCommand = "_tieredHeadings.getTreeNavigationTargets";
+const inspectViewVisibleCommand = "_tieredHeadings.isViewVisible";
+const inspectTreeItemsCommand = "_tieredHeadings.getTreeItems";
 
 async function openSampleDocument(): Promise<vscode.TextEditor> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -103,6 +105,25 @@ async function waitForNewerModel(
   throw new Error("The heading model did not refresh before the timeout.");
 }
 
+async function waitForViewVisibility(expectedVisibility: boolean): Promise<void> {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const viewVisible = await vscode.commands.executeCommand<boolean>(
+      inspectViewVisibleCommand,
+    );
+    if (viewVisible === expectedVisibility) {
+      return;
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  assert.equal(
+    await vscode.commands.executeCommand<boolean>(inspectViewVisibleCommand),
+    expectedVisibility,
+  );
+}
+
 suite("Tiered Headings extension", (): void => {
   suiteSetup(async (): Promise<void> => {
     await openSampleDocument();
@@ -136,6 +157,56 @@ suite("Tiered Headings extension", (): void => {
         ["Details", 3, 4],
       ],
     );
+  });
+
+  test("shows and focuses the Headings view", async (): Promise<void> => {
+    await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+    await waitForViewVisibility(true);
+    await vscode.commands.executeCommand("workbench.action.closeSidebar");
+    await waitForViewVisibility(false);
+
+    await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+
+    await waitForViewVisibility(true);
+  });
+
+  test("uses light and dark level icons for native tree items", async (): Promise<void> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("The integration workspace must be open.");
+    }
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
+    );
+    await vscode.window.showTextDocument(document, { preview: false });
+    await waitForHeadingCount(8);
+    const item_itemId = await vscode.commands.executeCommand<readonly vscode.TreeItem[]>(
+      inspectTreeItemsCommand,
+    );
+    const expectedIconByLevel = new Map([
+      ["L1", "heading-1.svg"],
+      ["L2", "heading-2.svg"],
+      ["L3", "heading-3.svg"],
+      ["L4", "heading-higher.svg"],
+    ]);
+
+    expectedIconByLevel.forEach((expectedIcon: string, levelDescription: string): void => {
+      const item = item_itemId.find(
+        (candidate: vscode.TreeItem): boolean => (
+          typeof candidate.description === "string"
+          && candidate.description.startsWith(levelDescription)
+        ),
+      );
+      if (item === undefined) {
+        throw new Error(`Tree item ${levelDescription} was not found.`);
+      }
+      const iconPath = item.iconPath as { light: vscode.Uri; dark: vscode.Uri } | undefined;
+      assert.equal(iconPath?.light.path.endsWith(`/resources/light/${expectedIcon}`), true);
+      assert.equal(iconPath?.dark.path.endsWith(`/resources/dark/${expectedIcon}`), true);
+    });
+
+    await openSampleDocument();
+    await waitForHeadingCount(3);
   });
 
   test("navigates to the selected trigger", async (): Promise<void> => {

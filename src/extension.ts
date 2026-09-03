@@ -9,7 +9,7 @@ import { affectsHeadingSettings } from "./settings";
 const viewId = "tieredHeadings.explorer";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new HeadingTreeProvider();
+  const provider = new HeadingTreeProvider(context.extensionUri);
   const treeView = vscode.window.createTreeView(viewId, {
     treeDataProvider: provider,
     showCollapseAll: true,
@@ -45,6 +45,13 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
     vscode.commands.registerCommand(
+      "tieredHeadings.showHeadings",
+      async (): Promise<void> => {
+        await vscode.commands.executeCommand("workbench.view.explorer");
+        await vscode.commands.executeCommand(`${viewId}.focus`);
+      },
+    ),
+    vscode.commands.registerCommand(
       "tieredHeadings.navigate",
       (target: HeadingNavigationTarget): void => {
         controller.navigateToHeading(target);
@@ -57,6 +64,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "_tieredHeadings.getTreeNavigationTargets",
       (): readonly unknown[] => provider.getNavigationTargetsForTesting(),
+    ),
+    vscode.commands.registerCommand(
+      "_tieredHeadings.isViewVisible",
+      (): boolean => treeView.visible,
+    ),
+    vscode.commands.registerCommand(
+      "_tieredHeadings.getTreeItems",
+      (): readonly vscode.TreeItem[] => provider.getTreeItemsForTesting(),
     ),
     vscode.window.onDidChangeActiveTextEditor((): void => {
       controller.refresh();

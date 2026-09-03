@@ -1,9 +1,16 @@
-import type { TriggerDefinition } from "./model";
+import type {
+  HeadingStyleMap,
+  HeadingTextStyle,
+  LevelStyleDefinition,
+  TriggerDefinition,
+} from "./model";
 import { literalSnippetsEqual } from "./literal";
 import { findUnsupportedPlaceholder } from "./template";
 
 export interface ConfigurationIssue {
-  readonly triggerIndex: number | null;
+  readonly triggerIndex?: number | null;
+  readonly levelStyleIndex?: number | null;
+  readonly settingKey?: string;
   readonly message: string;
 }
 
@@ -12,11 +19,42 @@ export interface TriggerConfigurationResult {
   readonly issue_issueId: ConfigurationIssue[];
 }
 
+export interface LevelStyleConfigurationResult {
+  readonly levelStyle_level: LevelStyleDefinition[];
+  readonly issue_issueId: ConfigurationIssue[];
+}
+
+/** Default whole-line styles used when the setting is absent or malformed. */
+export const defaultLevelStyle_level: readonly LevelStyleDefinition[] = Object.freeze([
+  Object.freeze({ level: 1, style: "bold" }),
+  Object.freeze({ level: 2, style: "boldItalic" }),
+  Object.freeze({ level: 3, style: "italic" }),
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const allowedTriggerKeys = new Set(["snippet", "level", "labelTemplate"]);
+const allowedLevelStyleKeys = new Set(["level", "style"]);
+const triggerSettingKey = "tieredHeadings.triggers";
+const levelStyleSettingKey = "tieredHeadings.editor.levelStyles";
+const supportedHeadingStyles = new Set<HeadingTextStyle>([
+  "normal",
+  "bold",
+  "italic",
+  "boldItalic",
+]);
+
+function attachSettingKey(
+  issue_issueId: readonly ConfigurationIssue[],
+  settingKey: string,
+): ConfigurationIssue[] {
+  return issue_issueId.map((issue: ConfigurationIssue): ConfigurationIssue => ({
+    ...issue,
+    settingKey,
+  }));
+}
 
 /** Parses untrusted trigger configuration while retaining every valid definition. */
 export function parseTriggerDefinitions(
@@ -31,7 +69,10 @@ export function parseTriggerDefinitions(
       triggerIndex: null,
       message: "Heading triggers must be an array.",
     });
-    return { trigger_triggerId, issue_issueId };
+    return {
+      trigger_triggerId,
+      issue_issueId: attachSettingKey(issue_issueId, triggerSettingKey),
+    };
   }
 
   raw.forEach((item: unknown, triggerIndex: number): void => {
@@ -119,5 +160,109 @@ export function parseTriggerDefinitions(
     trigger_triggerId.push({ snippet, level, labelTemplate });
   });
 
-  return { trigger_triggerId, issue_issueId };
+  return {
+    trigger_triggerId,
+    issue_issueId: attachSettingKey(issue_issueId, triggerSettingKey),
+  };
+}
+
+/** Parses untrusted whole-line style configuration while retaining valid entries. */
+export function parseLevelStyleDefinitions(raw: unknown): LevelStyleConfigurationResult {
+  const levelStyle_level: LevelStyleDefinition[] = [];
+  const issue_issueId: ConfigurationIssue[] = [];
+  const seenLevels = new Set<number>();
+
+  if (!Array.isArray(raw)) {
+    issue_issueId.push({
+      levelStyleIndex: null,
+      message: "Heading level styles must be an array; using the defaults.",
+    });
+    return {
+      levelStyle_level: defaultLevelStyle_level.map(
+        (definition: LevelStyleDefinition): LevelStyleDefinition => ({ ...definition }),
+      ),
+      issue_issueId: attachSettingKey(issue_issueId, levelStyleSettingKey),
+    };
+  }
+
+  raw.forEach((item: unknown, levelStyleIndex: number): void => {
+    if (!isRecord(item)) {
+      issue_issueId.push({
+        levelStyleIndex,
+        message: `Level style ${levelStyleIndex + 1} must be an object.`,
+      });
+      return;
+    }
+
+    let valid = true;
+    const level = item.level;
+    const style = item.style;
+
+    Object.keys(item).forEach((key: string): void => {
+      if (!allowedLevelStyleKeys.has(key)) {
+        issue_issueId.push({
+          levelStyleIndex,
+          message: `Level style ${levelStyleIndex + 1} contains unsupported property "${key}".`,
+        });
+      }
+    });
+
+    if (typeof level !== "number" || !Number.isInteger(level) || level < 1) {
+      issue_issueId.push({
+        levelStyleIndex,
+        message: `Level style ${levelStyleIndex + 1} must have an integer level of at least 1.`,
+      });
+      valid = false;
+    }
+
+    if (typeof style !== "string" || !supportedHeadingStyles.has(style as HeadingTextStyle)) {
+      issue_issueId.push({
+        levelStyleIndex,
+        message: `Level style ${levelStyleIndex + 1} must use normal, bold, italic, or boldItalic.`,
+      });
+      valid = false;
+    }
+
+    if (!valid || typeof level !== "number" || typeof style !== "string") {
+      return;
+    }
+
+    if (seenLevels.has(level)) {
+      issue_issueId.push({
+        levelStyleIndex,
+        message: `Level style ${levelStyleIndex + 1} duplicates heading level ${level}.`,
+      });
+      return;
+    }
+
+    seenLevels.add(level);
+    levelStyle_level.push({ level, style: style as HeadingTextStyle });
+  });
+
+  return {
+    levelStyle_level,
+    issue_issueId: attachSettingKey(issue_issueId, levelStyleSettingKey),
+  };
+}
+
+/** Builds the level lookup consumed by editor decoration logic. */
+export function buildHeadingStyleMap(
+  levelStyle_level: readonly LevelStyleDefinition[],
+): HeadingStyleMap {
+  return new Map(
+    levelStyle_level.map(
+      (definition: LevelStyleDefinition): readonly [number, HeadingTextStyle] => [
+        definition.level,
+        definition.style,
+      ],
+    ),
+  );
+}
+
+/** Resolves unlisted levels to normal without requiring a normal decoration. */
+export function resolveHeadingTextStyle(
+  level: number,
+  styleByLevel: HeadingStyleMap,
+): HeadingTextStyle {
+  return styleByLevel.get(level) ?? "normal";
 }

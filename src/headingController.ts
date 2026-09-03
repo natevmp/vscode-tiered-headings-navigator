@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import type { ConfigurationIssue } from "./configuration";
 import type { DecorationManager } from "./decorationManager";
 import { buildHeadingHierarchy } from "./hierarchy";
 import {
@@ -261,7 +262,12 @@ export class HeadingController implements vscode.Disposable {
       this.modelGeneration,
       document.version,
     );
-    this.decorationManager.update(editor, heading_headingId, settings.gutterEnabled);
+    this.decorationManager.update(
+      editor,
+      heading_headingId,
+      settings.gutterEnabled,
+      settings.styleByLevel,
+    );
     this.treeView.description = this.getDocumentDescription(document);
     this.treeView.message = this.getViewMessage(
       settings.trigger_triggerId.length,
@@ -288,7 +294,7 @@ export class HeadingController implements vscode.Disposable {
   }
 
   private reportConfigurationIssues(
-    issue_issueId: readonly { readonly message: string }[],
+    issue_issueId: readonly ConfigurationIssue[],
   ): void {
     if (issue_issueId.length === 0) {
       this.activeIssueSignature = undefined;
@@ -312,6 +318,17 @@ export class HeadingController implements vscode.Disposable {
       return;
     }
     this.notifiedIssueSignatures.add(issueSignature);
+    const settingKeys = new Set(
+      issue_issueId.flatMap((issue: ConfigurationIssue): string[] => (
+        issue.settingKey === undefined ? [] : [issue.settingKey]
+      )),
+    );
+    let settingsQuery = "tieredHeadings";
+    if (settingKeys.size === 1) {
+      settingKeys.forEach((settingKey: string): void => {
+        settingsQuery = settingKey;
+      });
+    }
     void vscode.window.showWarningMessage(
       `Tiered Headings found ${issue_issueId.length} configuration issue${issue_issueId.length === 1 ? "" : "s"}.`,
       "Open Settings",
@@ -320,7 +337,7 @@ export class HeadingController implements vscode.Disposable {
       if (selection === "Open Settings") {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
-          "tieredHeadings.triggers",
+          settingsQuery,
         );
       } else if (selection === "Show Details") {
         this.outputChannel.show();

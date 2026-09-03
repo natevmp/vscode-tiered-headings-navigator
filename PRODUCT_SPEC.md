@@ -1,6 +1,6 @@
 # Tiered Headings Navigator — Product Specification
 
-**Status:** Draft v0.1
+**Status:** Draft v0.2
 **Product type:** Visual Studio Code desktop extension
 
 ## Summary
@@ -31,6 +31,7 @@ The first release shall:
 8. Navigate to a heading's line when selected.
 9. Update automatically as the unsaved document changes.
 10. Display the same gutter marker beside every detected heading.
+11. Apply configurable bold and italic whole-line styles by heading level.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -58,7 +59,12 @@ Proposed configuration:
     }
   ],
   "tieredHeadings.caseSensitive": true,
-  "tieredHeadings.gutter.enabled": true
+  "tieredHeadings.gutter.enabled": true,
+  "tieredHeadings.editor.levelStyles": [
+    { "level": 1, "style": "bold" },
+    { "level": 2, "style": "boldItalic" },
+    { "level": 3, "style": "italic" }
+  ]
 }
 ```
 
@@ -73,6 +79,9 @@ Each label template may use:
 The formatted result is trimmed. An empty result becomes `Untitled heading (line N)`.
 
 Invalid definitions must not crash the extension. Valid definitions continue working, while a concise warning identifies the invalid setting.
+
+Level styles accept `normal`, `bold`, `italic`, or `boldItalic`. Unlisted levels
+remain unchanged, and an empty style array disables editor text styling.
 
 ## Detection rules
 
@@ -134,21 +143,31 @@ Thus:
 
 ## Explorer view
 
-- The view is named **Tiered Headings** and appears in Explorer.
+- The view is named **Headings** and appears in Explorer.
 - It contains headings for the active text editor only, without a file root.
 - Headings with children are initially expanded and are collapsible.
 - Leaf headings have no collapse control.
 - Labels use the configured templates.
 - Tooltips include level, line number, and complete source line.
+- Native, theme-compatible icons distinguish levels 1, 2, 3, and higher levels.
 - Clicking a heading places the cursor at its trigger and reveals the line.
 - An empty view explains whether no editor, no configured triggers, or no matches are present and provides a configuration action.
+- A **Tiered Headings: Show Headings** command opens Explorer and focuses the view.
 
 ## Gutter marker
 
 - Every detected heading in the active editor receives the same theme-compatible gutter icon.
 - Markers update alongside the tree and disappear when headings are removed.
-- Per-level colors, icons, and trigger highlighting are outside the initial release.
+- Per-level gutter colors and trigger-only highlighting are outside the initial release.
 - The marker can be disabled without disabling navigation.
+
+## Editor heading styles
+
+- Font weight and italics apply to the complete physical heading line.
+- Defaults are bold for level 1, bold italic for level 2, italic for level 3, and normal for unlisted levels.
+- Styles are resource-scoped and update with the heading model.
+- Styling can be disabled independently from gutter markers and navigation.
+- Per-line font sizes are unsupported by the stable VS Code decoration API.
 
 ## Non-goals for the initial release
 
@@ -159,7 +178,7 @@ Thus:
 - Next/previous heading commands.
 - Cursor-following selection in the tree.
 - Outline, breadcrumb, or Document Symbol integration.
-- Custom per-tier decorations.
+- Per-tier font sizes or arbitrary CSS.
 - Language-aware comment detection.
 
 ## Acceptance criteria
@@ -170,6 +189,8 @@ Thus:
 - Unsaved edits add, remove, rename, and re-parent headings without manual refresh.
 - Switching active editors replaces the pane contents.
 - Exactly one gutter marker appears per detected heading line.
+- Default whole-line styles match the configured level 1–3 behavior, while higher levels remain normal.
+- The Show Headings command reveals and focuses the Explorer view.
 - Invalid configuration reports an actionable warning without disabling valid triggers.
 - Documents without headings show appropriate welcome content.
 

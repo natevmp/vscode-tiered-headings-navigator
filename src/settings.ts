@@ -1,10 +1,17 @@
 import * as vscode from "vscode";
 
 import {
+  buildHeadingStyleMap,
+  defaultLevelStyle_level,
+  parseLevelStyleDefinitions,
   parseTriggerDefinitions,
   type ConfigurationIssue,
 } from "./configuration";
-import type { TriggerDefinition } from "./model";
+import type {
+  HeadingStyleMap,
+  LevelStyleDefinition,
+  TriggerDefinition,
+} from "./model";
 
 const configurationSection = "tieredHeadings";
 
@@ -25,6 +32,7 @@ function parseBooleanSetting(
     value: defaultValue,
     issue: {
       triggerIndex: null,
+      settingKey: settingName,
       message: `${settingName} must be a boolean; using ${String(defaultValue)}.`,
     },
   };
@@ -34,6 +42,8 @@ export interface HeadingSettings {
   readonly caseSensitive: boolean;
   readonly gutterEnabled: boolean;
   readonly trigger_triggerId: TriggerDefinition[];
+  readonly levelStyle_level: readonly LevelStyleDefinition[];
+  readonly styleByLevel: HeadingStyleMap;
   readonly issue_issueId: ConfigurationIssue[];
 }
 
@@ -54,7 +64,12 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
     "tieredHeadings.gutter.enabled",
   );
   const rawTriggers = configuration.get<unknown>("triggers", []);
-  const result = parseTriggerDefinitions(rawTriggers, caseSensitiveResult.value);
+  const triggerResult = parseTriggerDefinitions(rawTriggers, caseSensitiveResult.value);
+  const rawLevelStyles = configuration.get<unknown>(
+    "editor.levelStyles",
+    defaultLevelStyle_level,
+  );
+  const levelStyleResult = parseLevelStyleDefinitions(rawLevelStyles);
   const issue_issueId: ConfigurationIssue[] = [];
   if (caseSensitiveResult.issue !== undefined) {
     issue_issueId.push(caseSensitiveResult.issue);
@@ -62,12 +77,14 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
   if (gutterEnabledResult.issue !== undefined) {
     issue_issueId.push(gutterEnabledResult.issue);
   }
-  issue_issueId.push(...result.issue_issueId);
+  issue_issueId.push(...triggerResult.issue_issueId, ...levelStyleResult.issue_issueId);
 
   return {
     caseSensitive: caseSensitiveResult.value,
     gutterEnabled: gutterEnabledResult.value,
-    trigger_triggerId: result.trigger_triggerId,
+    trigger_triggerId: triggerResult.trigger_triggerId,
+    levelStyle_level: levelStyleResult.levelStyle_level,
+    styleByLevel: buildHeadingStyleMap(levelStyleResult.levelStyle_level),
     issue_issueId,
   };
 }

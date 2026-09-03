@@ -5,6 +5,18 @@ export interface TriggerDefinition {
   readonly labelTemplate: string;
 }
 
+/** Whole-line text styles supported for detected headings. */
+export type HeadingTextStyle = "normal" | "bold" | "italic" | "boldItalic";
+
+/** Resolved whole-line styles keyed by positive heading level. */
+export type HeadingStyleMap = ReadonlyMap<number, HeadingTextStyle>;
+
+/** A validated text style associated with a positive heading level. */
+export interface LevelStyleDefinition {
+  readonly level: number;
+  readonly style: HeadingTextStyle;
+}
+
 /** A heading detected in a document. Character positions are zero-based. */
 export interface Heading {
   readonly id: string;
