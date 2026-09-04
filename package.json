@@ -2,7 +2,7 @@
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate user-defined, tiered inline headings in the active document.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -86,7 +86,7 @@
           "type": "array",
           "scope": "resource",
           "default": [],
-          "markdownDescription": "Literal snippets that define heading levels and pane labels. Use `${after}`, `${before}`, `${line}`, `${trigger}`, or `${lineNumber}` in `labelTemplate`.",
+          "markdownDescription": "Literal snippets that define heading levels and pane labels. Use `${after}`, `${before}`, `${line}`, `${trigger}`, or `${lineNumber}` in `labelTemplate`. Optional `labelDelimiters` extract a title from `${after}`.",
           "items": {
             "type": "object",
             "required": [
@@ -110,6 +110,29 @@
                 "type": "string",
                 "default": "${after}",
                 "description": "Template used to create the heading label."
+              },
+              "labelDelimiters": {
+                "type": "object",
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "additionalProperties": false,
+                "description": "Exact, case-sensitive delimiters stripped atomically from text after the trigger.",
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[^\\r\\n]+$",
+                    "description": "Complete opening delimiter."
+                  },
+                  "end": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[^\\r\\n]+$",
+                    "description": "Complete closing delimiter."
+                  }
+                }
               }
             }
           }

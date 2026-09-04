@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { HeadingNavigationTarget, HeadingNode } from "./model";
+import { getHeadingMarkerPresentation } from "./headingPresentation";
 
 const navigateCommand = "tieredHeadings.navigate";
 
@@ -25,10 +26,30 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
       : vscode.TreeItemCollapsibleState.None;
     const item = new vscode.TreeItem(element.label, collapsibleState);
     item.id = element.id;
-    item.description = `L${element.level} · ${element.line + 1}`;
-    item.tooltip = `${element.sourceLine}\nLevel ${element.level}, line ${element.line + 1}`;
+    const lineNumber = element.line + 1;
+    item.description = `line ${lineNumber}`;
+    item.tooltip = `${element.sourceLine}\nLevel ${element.level}, line ${lineNumber}`;
+    item.accessibilityInformation = {
+      label: `${element.label}, level ${element.level}, line ${lineNumber}`,
+    };
     item.contextValue = "tieredHeading";
-    item.iconPath = this.getHeadingIconPath(element.level);
+    const markerPresentation = getHeadingMarkerPresentation(element.level);
+    item.iconPath = markerPresentation.paneIcon.kind === "theme"
+      ? new vscode.ThemeIcon(markerPresentation.paneIcon.themeIconId)
+      : {
+        light: vscode.Uri.joinPath(
+          this.extensionUri,
+          "resources",
+          "light",
+          markerPresentation.assetName,
+        ),
+        dark: vscode.Uri.joinPath(
+          this.extensionUri,
+          "resources",
+          "dark",
+          markerPresentation.assetName,
+        ),
+      };
     const navigationTarget = this.navigationTargetByNode.get(element);
     if (navigationTarget !== undefined) {
       item.command = {
@@ -38,14 +59,6 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
       };
     }
     return item;
-  }
-
-  private getHeadingIconPath(level: number): { light: vscode.Uri; dark: vscode.Uri } {
-    const iconName = level <= 3 ? `heading-${String(level)}.svg` : "heading-higher.svg";
-    return {
-      light: vscode.Uri.joinPath(this.extensionUri, "resources", "light", iconName),
-      dark: vscode.Uri.joinPath(this.extensionUri, "resources", "dark", iconName),
-    };
   }
 
   public getChildren(element?: HeadingNode): HeadingNode[] {

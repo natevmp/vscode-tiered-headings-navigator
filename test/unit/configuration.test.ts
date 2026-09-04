@@ -27,6 +27,145 @@ describe("parseTriggerDefinitions", (): void => {
     assert.deepEqual(result.issue_issueId, []);
   });
 
+  it("accepts mixed symmetric and asymmetric label delimiters", (): void => {
+    const result = parseTriggerDefinitions([
+      {
+        snippet: "@h1",
+        level: 1,
+        labelDelimiters: { start: "----", end: "----" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelDelimiters: { start: "[[", end: ">>" },
+      },
+      { snippet: "@h3", level: 3 },
+    ]);
+
+    assert.deepEqual(result.trigger_triggerId, [
+      {
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "----", end: "----" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "[[", end: ">>" },
+      },
+      { snippet: "@h3", level: 3, labelTemplate: "${after}" },
+    ]);
+    assert.deepEqual(result.issue_issueId, []);
+  });
+
+  it("reports non-object label delimiters but retains their triggers", (): void => {
+    const result = parseTriggerDefinitions([
+      { snippet: "@h1", level: 1, labelDelimiters: "----" },
+      { snippet: "@h2", level: 2, labelDelimiters: [] },
+      { snippet: "@h3", level: 3, labelDelimiters: null },
+    ]);
+
+    assert.equal(result.trigger_triggerId.length, 3);
+    assert.equal(result.issue_issueId.length, 3);
+    result.trigger_triggerId.forEach((trigger): void => {
+      assert.equal("labelDelimiters" in trigger, false);
+    });
+    result.issue_issueId.forEach((issue): void => {
+      assert.match(issue.message, /labelDelimiters must be an object/i);
+    });
+  });
+
+  it("reports missing delimiter fields and disables extraction", (): void => {
+    const result = parseTriggerDefinitions([
+      { snippet: "@h1", level: 1, labelDelimiters: { end: "----" } },
+      { snippet: "@h2", level: 2, labelDelimiters: { start: "[[" } },
+    ]);
+
+    assert.equal(result.trigger_triggerId.length, 2);
+    assert.equal(result.issue_issueId.length, 2);
+    assert.match(result.issue_issueId[0]?.message ?? "", /\.start.*non-empty string/i);
+    assert.match(result.issue_issueId[1]?.message ?? "", /\.end.*non-empty string/i);
+    result.trigger_triggerId.forEach((trigger): void => {
+      assert.equal(trigger.labelDelimiters, undefined);
+    });
+  });
+
+  it("reports non-string delimiter fields and disables extraction", (): void => {
+    const result = parseTriggerDefinitions([
+      {
+        snippet: "@h1",
+        level: 1,
+        labelDelimiters: { start: 4, end: "----" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelDelimiters: { start: "[[", end: false },
+      },
+    ]);
+
+    assert.equal(result.trigger_triggerId.length, 2);
+    assert.equal(result.issue_issueId.length, 2);
+    assert.match(result.issue_issueId[0]?.message ?? "", /\.start.*non-empty string/i);
+    assert.match(result.issue_issueId[1]?.message ?? "", /\.end.*non-empty string/i);
+    result.trigger_triggerId.forEach((trigger): void => {
+      assert.equal(trigger.labelDelimiters, undefined);
+    });
+  });
+
+  it("reports empty and multiline delimiter fields and disables extraction", (): void => {
+    const result = parseTriggerDefinitions([
+      {
+        snippet: "@h1",
+        level: 1,
+        labelDelimiters: { start: "", end: "----" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelDelimiters: { start: "[[", end: "" },
+      },
+      {
+        snippet: "@h3",
+        level: 3,
+        labelDelimiters: { start: "<\n<", end: ">>" },
+      },
+      {
+        snippet: "@h4",
+        level: 4,
+        labelDelimiters: { start: "[[", end: ">\r>" },
+      },
+    ]);
+
+    assert.equal(result.trigger_triggerId.length, 4);
+    assert.equal(result.issue_issueId.length, 4);
+    assert.match(result.issue_issueId[0]?.message ?? "", /\.start.*non-empty string/i);
+    assert.match(result.issue_issueId[1]?.message ?? "", /\.end.*non-empty string/i);
+    assert.match(result.issue_issueId[2]?.message ?? "", /\.start.*line break/i);
+    assert.match(result.issue_issueId[3]?.message ?? "", /\.end.*line break/i);
+    result.trigger_triggerId.forEach((trigger): void => {
+      assert.equal(trigger.labelDelimiters, undefined);
+    });
+  });
+
+  it("reports unsupported delimiter properties and disables extraction", (): void => {
+    const result = parseTriggerDefinitions([{
+      snippet: "@h1",
+      level: 1,
+      labelDelimiters: { start: "----", end: "----", caseSensitive: false },
+    }]);
+
+    assert.equal(result.trigger_triggerId.length, 1);
+    assert.equal(result.trigger_triggerId[0]?.labelDelimiters, undefined);
+    assert.equal(result.issue_issueId.length, 1);
+    assert.match(
+      result.issue_issueId[0]?.message ?? "",
+      /labelDelimiters contains unsupported property.*caseSensitive/i,
+    );
+  });
+
   it("rejects empty or multiline snippets and invalid levels", (): void => {
     const result = parseTriggerDefinitions([
       { snippet: "", level: 1 },

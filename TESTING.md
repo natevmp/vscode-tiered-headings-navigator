@@ -19,13 +19,17 @@ their first use. Packaging also runs the complete verification suite.
 3. In the Extension Development Host, open `sample.txt`.
 4. Run **Tiered Headings: Show Headings** and confirm Explorer focuses the **Headings** view.
 5. Confirm the tree contains **Introduction → Installation → Details**.
-6. Confirm every heading line has an `H` marker in the editor gutter.
+6. Confirm the sample's gutter markers are a filled circle for level 1, open circle for level 2, and plus for level 3.
 7. Confirm level 1 is bold, level 2 is bold italic, and level 3 is italic across each complete heading line.
-8. Confirm the tree rows have H1, H2, and H3 level icons in both light and dark themes.
-9. Click **Details** and confirm the cursor moves to its `@h3` trigger.
-10. Add, rename, or remove a heading without saving and confirm the tree updates shortly afterward.
-11. Collapse **Introduction** and confirm its descendants disappear.
-12. Open `hierarchy-demo.txt` and compare the tree with the expected hierarchy below.
+8. Confirm the sample's pane symbols are `circle-filled` for level 1, `circle-outline` for level 2, and a compact custom plus for level 3.
+9. Confirm each row description is only `line N`, with no `Lx` text.
+10. Where practical, inspect the tree with a screen reader and confirm each row announces its heading label, level, and line number.
+11. Click **Details** and confirm the cursor moves to its `@h3` trigger.
+12. Add, rename, or remove a heading without saving and confirm the tree updates shortly afterward.
+13. Collapse **Introduction** and confirm its descendants disappear.
+14. Open `hierarchy-demo.txt` and compare the tree with the expected hierarchy below.
+15. Now confirm all four gutter and pane shapes at a similar visual scale: filled circle/`circle-filled` for level 1, open circle/`circle-outline` for level 2, compact plus for level 3, and dash/`dash` for level 4 and higher.
+16. Switch between light and dark themes. Confirm all four gutter shapes remain similarly scaled, subtle, and visible, and the native pane symbols remain theme-compatible.
 
 Expected hierarchy for `hierarchy-demo.txt`:
 
@@ -56,6 +60,33 @@ Use the gear button in the **Headings** view to open settings. Try changing a la
 
 The pane should update immediately. An unsupported placeholder such as `${title}` should produce one warning while other valid triggers continue working.
 
+Also configure mixed delimiters:
+
+```json
+[
+  {
+    "snippet": "@h1",
+    "level": 1,
+    "labelDelimiters": { "start": "----", "end": "----" }
+  },
+  {
+    "snippet": "@h2",
+    "level": 2,
+    "labelDelimiters": { "start": "[[", "end": ">>" }
+  }
+]
+```
+
+Confirm `# @h1 ---- A title ----` appears as **A title**, while
+`# @h2 [[ Asymmetric title >>` appears as **Asymmetric title**. Remove or
+partially type either closing delimiter and confirm neither delimiter is
+partially stripped, the original after text remains visible, and no runtime
+warning appears. Restore it and confirm extraction resumes. Try mismatched
+delimiter case and overlapping delimiters, and confirm extraction occurs only
+for complete, exact, case-sensitive, non-overlapping pairs.
+
 Set `tieredHeadings.editor.levelStyles` to `[]` and confirm editor text styling
-disappears while gutter markers and navigation continue working. Then configure
-an arbitrary higher level and confirm its selected style applies immediately.
+disappears while gutter markers and navigation continue working. Disable
+`tieredHeadings.gutter.enabled` and confirm all four gutter marker types disappear
+while configured text styling remains. Then configure an arbitrary higher level
+and confirm its dash marker and selected text style apply immediately.

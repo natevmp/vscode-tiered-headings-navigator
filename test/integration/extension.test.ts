@@ -38,8 +38,63 @@ async function openSampleDocument(): Promise<vscode.TextEditor> {
     throw new Error("The integration workspace must be open.");
   }
   const documentUri = vscode.Uri.joinPath(workspaceFolder.uri, "sample.txt");
+  const diskText = Buffer.from(await vscode.workspace.fs.readFile(documentUri)).toString(
+    "utf8",
+  );
   const document = await vscode.workspace.openTextDocument(documentUri);
-  return vscode.window.showTextDocument(document, { preview: false });
+  const editor = await vscode.window.showTextDocument(document, { preview: false });
+  if (document.isDirty || document.getText() !== diskText) {
+    await vscode.commands.executeCommand("workbench.action.files.revert");
+    await waitForDocumentReset(document, diskText);
+  }
+  if (document.isDirty || document.getText() !== diskText) {
+    throw new Error("sample.txt could not be restored from its on-disk fixture.");
+  }
+  return editor;
+}
+
+async function waitForDocumentReset(
+  document: vscode.TextDocument,
+  diskText: string,
+): Promise<void> {
+  if (!document.isDirty && document.getText() === diskText) {
+    return;
+  }
+  await new Promise<void>((resolve, reject): void => {
+    const changeDisposable = vscode.workspace.onDidChangeTextDocument(
+      (event: vscode.TextDocumentChangeEvent): void => {
+        if (event.document === document) {
+          checkReset();
+        }
+      },
+    );
+    const closeDisposable = vscode.workspace.onDidCloseTextDocument(
+      (closedDocument: vscode.TextDocument): void => {
+        if (closedDocument === document) {
+          finish(new Error("sample.txt closed before its fixture reset completed."));
+        }
+      },
+    );
+    const timeout = setTimeout((): void => {
+      finish(new Error("sample.txt fixture reset did not complete before the timeout."));
+    }, 3000);
+    function finish(error?: Error): void {
+      changeDisposable.dispose();
+      closeDisposable.dispose();
+      clearTimeout(timeout);
+      if (error === undefined) {
+        resolve();
+      } else {
+        reject(error);
+      }
+    }
+    function checkReset(): void {
+      if (!document.isDirty && document.getText() === diskText) {
+        finish();
+      }
+    }
+    checkReset();
+  });
 }
 
 async function readActiveSnapshot(): Promise<ActiveHeadingSnapshot | undefined> {
@@ -140,6 +195,10 @@ suite("Tiered Headings extension", (): void => {
     assert.equal(extension.isActive, true, "onStartupFinished should activate the extension");
   });
 
+  suiteTeardown(async (): Promise<void> => {
+    await openSampleDocument();
+  });
+
   test("scans the configured headings in the active document", async (): Promise<void> => {
     await openSampleDocument();
     await vscode.commands.executeCommand("tieredHeadings.refresh");
@@ -170,7 +229,7 @@ suite("Tiered Headings extension", (): void => {
     await waitForViewVisibility(true);
   });
 
-  test("uses light and dark level icons for native tree items", async (): Promise<void> => {
+  test("uses level symbols and accessible line-only descriptions", async (): Promise<void> => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (workspaceFolder === undefined) {
       throw new Error("The integration workspace must be open.");
@@ -183,26 +242,63 @@ suite("Tiered Headings extension", (): void => {
     const item_itemId = await vscode.commands.executeCommand<readonly vscode.TreeItem[]>(
       inspectTreeItemsCommand,
     );
-    const expectedIconByLevel = new Map([
-      ["L1", "heading-1.svg"],
-      ["L2", "heading-2.svg"],
-      ["L3", "heading-3.svg"],
-      ["L4", "heading-higher.svg"],
+    type ExpectedPaneIcon =
+      | { readonly kind: "theme"; readonly iconId: string }
+      | { readonly kind: "asset"; readonly assetName: string };
+    interface ExpectedPresentation {
+      readonly icon: ExpectedPaneIcon;
+      readonly level: number;
+      readonly lineNumber: number;
+    }
+    const expectedPresentationByLabel = new Map<string, ExpectedPresentation>([
+      ["A", {
+        icon: { kind: "theme", iconId: "circle-filled" },
+        level: 1,
+        lineNumber: 1,
+      }],
+      ["B", {
+        icon: { kind: "theme", iconId: "circle-outline" },
+        level: 2,
+        lineNumber: 2,
+      }],
+      ["E", {
+        icon: { kind: "asset", assetName: "marker-plus.svg" },
+        level: 3,
+        lineNumber: 5,
+      }],
+      ["H", {
+        icon: { kind: "theme", iconId: "dash" },
+        level: 4,
+        lineNumber: 8,
+      }],
     ]);
 
-    expectedIconByLevel.forEach((expectedIcon: string, levelDescription: string): void => {
+    expectedPresentationByLabel.forEach((expected, label: string): void => {
       const item = item_itemId.find(
-        (candidate: vscode.TreeItem): boolean => (
-          typeof candidate.description === "string"
-          && candidate.description.startsWith(levelDescription)
-        ),
+        (candidate: vscode.TreeItem): boolean => candidate.label === label,
       );
       if (item === undefined) {
-        throw new Error(`Tree item ${levelDescription} was not found.`);
+        throw new Error(`Tree item ${label} was not found.`);
       }
-      const iconPath = item.iconPath as { light: vscode.Uri; dark: vscode.Uri } | undefined;
-      assert.equal(iconPath?.light.path.endsWith(`/resources/light/${expectedIcon}`), true);
-      assert.equal(iconPath?.dark.path.endsWith(`/resources/dark/${expectedIcon}`), true);
+      if (expected.icon.kind === "theme") {
+        const iconPath = item.iconPath as vscode.ThemeIcon | undefined;
+        assert.equal(iconPath?.id, expected.icon.iconId);
+      } else {
+        const iconPath = item.iconPath as { light: vscode.Uri; dark: vscode.Uri } | undefined;
+        assert.equal(
+          iconPath?.light.path.endsWith(`/resources/light/${expected.icon.assetName}`),
+          true,
+        );
+        assert.equal(
+          iconPath?.dark.path.endsWith(`/resources/dark/${expected.icon.assetName}`),
+          true,
+        );
+      }
+      assert.equal(item.description, `line ${String(expected.lineNumber)}`);
+      assert.equal(
+        item.accessibilityInformation?.label,
+        `${label}, level ${String(expected.level)}, line ${String(expected.lineNumber)}`,
+      );
     });
 
     await openSampleDocument();
@@ -239,19 +335,21 @@ suite("Tiered Headings extension", (): void => {
       throw new Error("Expected the first heading to exist.");
     }
     const staleTarget = await getTreeNavigationTarget(target.id);
+    try {
+      const inserted = await editor.edit((builder): void => {
+        builder.insert(new vscode.Position(0, 0), "ordinary line\n");
+      });
+      assert.equal(inserted, true);
+      const selectionAfterEdit = editor.selection.active;
 
-    const inserted = await editor.edit((builder): void => {
-      builder.insert(new vscode.Position(0, 0), "ordinary line\n");
-    });
-    assert.equal(inserted, true);
-    const selectionAfterEdit = editor.selection.active;
+      await vscode.commands.executeCommand("tieredHeadings.navigate", staleTarget);
 
-    await vscode.commands.executeCommand("tieredHeadings.navigate", staleTarget);
-
-    assert.equal(editor.selection.active.line, selectionAfterEdit.line);
-    assert.equal(editor.selection.active.character, selectionAfterEdit.character);
-    await vscode.commands.executeCommand("undo");
-    await waitForHeadingCount(3);
+      assert.equal(editor.selection.active.line, selectionAfterEdit.line);
+      assert.equal(editor.selection.active.character, selectionAfterEdit.character);
+    } finally {
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
   });
 
   test("does not reopen a document for a stale tree command", async (): Promise<void> => {
@@ -304,7 +402,6 @@ suite("Tiered Headings extension", (): void => {
 
   test("keeps identity with the surviving identical heading", async (): Promise<void> => {
     const editor = await openSampleDocument();
-    const originalText = editor.document.getText();
     try {
       const replaced = await editor.edit((builder): void => {
         builder.replace(
@@ -342,10 +439,7 @@ suite("Tiered Headings extension", (): void => {
       assert.notEqual(changedSnapshot.heading_headingId[1]?.id, firstId);
       assert.notEqual(changedSnapshot.heading_headingId[1]?.id, secondId);
     } finally {
-      for (let undoCount = 0; editor.document.isDirty && undoCount < 3; undoCount += 1) {
-        await vscode.commands.executeCommand("undo");
-      }
-      assert.equal(editor.document.getText(), originalText);
+      await openSampleDocument();
       await waitForHeadingCount(3);
     }
   });
@@ -374,9 +468,7 @@ suite("Tiered Headings extension", (): void => {
       assert.notEqual(headingId, undefined);
 
       assert.equal(await document.save(), true);
-      await new Promise<void>((resolve): void => {
-        setTimeout(resolve, 300);
-      });
+      assert.equal(document.isDirty, false);
       const savedSnapshot = await readActiveSnapshot();
 
       assert.equal(savedSnapshot?.documentIdentity, documentUri.toString());
@@ -402,15 +494,17 @@ suite("Tiered Headings extension", (): void => {
   test("updates after unsaved edits", async (): Promise<void> => {
     const editor = await openSampleDocument();
     const insertion = "\n// @h2 Live update";
-    const inserted = await editor.edit((builder): void => {
-      builder.insert(editor.document.positionAt(editor.document.getText().length), insertion);
-    });
-    assert.equal(inserted, true);
+    try {
+      const inserted = await editor.edit((builder): void => {
+        builder.insert(editor.document.positionAt(editor.document.getText().length), insertion);
+      });
+      assert.equal(inserted, true);
 
-    const { heading_headingId } = await waitForHeadingCount(4);
-    assert.equal(heading_headingId[3]?.label, "Live update");
-
-    await vscode.commands.executeCommand("undo");
-    await waitForHeadingCount(3);
+      const { heading_headingId } = await waitForHeadingCount(4);
+      assert.equal(heading_headingId[3]?.label, "Live update");
+    } finally {
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
   });
 });

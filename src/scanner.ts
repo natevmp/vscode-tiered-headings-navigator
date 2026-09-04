@@ -1,6 +1,6 @@
 import type { Heading, TriggerDefinition } from "./model";
 import { createLiteralExpression } from "./literal";
-import { formatHeadingLabel } from "./template";
+import { extractDelimitedAfter, formatHeadingLabel } from "./template";
 
 interface TriggerMatcher {
   readonly definition: TriggerDefinition;
@@ -80,8 +80,11 @@ export function scanDocument(
 
     const { definition } = selected.matcher;
     const endCharacter = selected.startCharacter + selected.matchedSnippet.length;
+    const after = sourceLine.slice(endCharacter);
     const label = formatHeadingLabel(definition.labelTemplate, {
-      after: sourceLine.slice(endCharacter),
+      after: definition.labelDelimiters === undefined
+        ? after
+        : extractDelimitedAfter(after, definition.labelDelimiters),
       before: sourceLine.slice(0, selected.startCharacter),
       line: sourceLine,
       trigger: selected.matchedSnippet,

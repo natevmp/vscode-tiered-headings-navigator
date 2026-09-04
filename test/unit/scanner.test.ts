@@ -161,4 +161,122 @@ describe("scanDocument", (): void => {
     assert.equal(heading_headingId.length, 1);
     assert.equal(heading_headingId[0]?.snippet, "@h2");
   });
+
+  it("extracts exact symmetric delimiters into the after context", (): void => {
+    const heading_headingId = scanDocument(
+      "# @h1   ----   A title   ----  ",
+      "delimited",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "----", end: "----" },
+      }],
+      true,
+    );
+
+    assert.equal(heading_headingId[0]?.label, "A title");
+    assert.equal(heading_headingId[0]?.sourceLine, "# @h1   ----   A title   ----  ");
+  });
+
+  it("uses mixed per-trigger symmetric and asymmetric delimiters", (): void => {
+    const trigger_triggerId: TriggerDefinition[] = [
+      {
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "----", end: "----" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelTemplate: "Part: ${after}",
+        labelDelimiters: { start: "[[", end: ">>" },
+      },
+      { snippet: "@h3", level: 3, labelTemplate: "${after}" },
+    ];
+    const heading_headingId = scanDocument(
+      "@h1 ---- One ----\n@h2 [[ Two >>\n@h3 Plain three",
+      "mixed-delimiters",
+      trigger_triggerId,
+      true,
+    );
+
+    assert.deepEqual(
+      heading_headingId.map((heading) => heading.label),
+      ["One", "Part: Two", "Plain three"],
+    );
+  });
+
+  it("falls back without partial stripping for mismatches or overlap", (): void => {
+    const trigger: TriggerDefinition = {
+      snippet: "@h1",
+      level: 1,
+      labelTemplate: "${after}",
+      labelDelimiters: { start: "----", end: "----" },
+    };
+    const heading_headingId = scanDocument(
+      "@h1 --- Start mismatch ----\n@h1 ---- End mismatch ---\n@h1 -----",
+      "delimiter-fallback",
+      [trigger],
+      true,
+    );
+
+    assert.deepEqual(
+      heading_headingId.map((heading) => heading.label),
+      ["--- Start mismatch ----", "---- End mismatch ---", "-----"],
+    );
+  });
+
+  it("keeps delimiter matching case-sensitive for case-insensitive triggers", (): void => {
+    const heading_headingId = scanDocument(
+      "@heading BEGIN Title end",
+      "delimiter-case",
+      [{
+        snippet: "@Heading",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "BEGIN", end: "END" },
+      }],
+      false,
+    );
+
+    assert.equal(heading_headingId[0]?.matchedSnippet, "@heading");
+    assert.equal(heading_headingId[0]?.label, "BEGIN Title end");
+  });
+
+  it("uses the existing blank-label fallback for empty extraction", (): void => {
+    const heading_headingId = scanDocument(
+      "@h1   --------  ",
+      "empty-delimited",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "----", end: "----" },
+      }],
+      true,
+    );
+
+    assert.equal(heading_headingId[0]?.label, "Untitled heading (line 1)");
+  });
+
+  it("preserves before and line contexts during delimiter extraction", (): void => {
+    const heading_headingId = scanDocument(
+      "prefix @h1 ---- Title ----",
+      "raw-context",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${before}|${after}|${line}",
+        labelDelimiters: { start: "----", end: "----" },
+      }],
+      true,
+    );
+
+    assert.equal(
+      heading_headingId[0]?.label,
+      "prefix |Title|prefix @h1 ---- Title ----",
+    );
+  });
 });

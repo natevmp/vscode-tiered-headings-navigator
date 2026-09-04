@@ -1,8 +1,15 @@
+/** Literal delimiters used to extract a title after a matched trigger. */
+export interface LabelDelimiters {
+  readonly start: string;
+  readonly end: string;
+}
+
 /** A validated, literal heading trigger. */
 export interface TriggerDefinition {
   readonly snippet: string;
   readonly level: number;
   readonly labelTemplate: string;
+  readonly labelDelimiters?: LabelDelimiters;
 }
 
 /** Whole-line text styles supported for detected headings. */

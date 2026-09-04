@@ -6,10 +6,11 @@ Tiered Headings Navigator is a local-first Visual Studio Code extension that tur
 
 - Define literal trigger snippets for heading levels 1, 2, 3, and beyond.
 - Display headings in a native **Headings** view in Explorer.
+- Distinguish levels with quiet, similarly scaled symbols and show `line N` beside each label.
 - Expand and collapse nested headings.
 - Click a heading to reveal its trigger in the editor.
 - Update the tree from unsaved edits.
-- Show a common heading marker in the editor gutter.
+- Show the corresponding level symbol in the editor gutter.
 - Style complete heading lines by level, with configurable bold and italic defaults.
 - Keep all processing local, with no telemetry or network access.
 
@@ -29,17 +30,29 @@ Open VS Code settings and add definitions such as:
     {
       "snippet": "@h1",
       "level": 1,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelDelimiters": {
+        "start": "----",
+        "end": "----"
+      }
     },
     {
       "snippet": "@h2",
       "level": 2,
-      "labelTemplate": "Section: ${after}"
+      "labelTemplate": "Section: ${after}",
+      "labelDelimiters": {
+        "start": "[[",
+        "end": "]]"
+      }
     },
     {
       "snippet": "@h3",
       "level": 3,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelDelimiters": {
+        "start": "<",
+        "end": ">>"
+      }
     }
   ]
 }
@@ -48,22 +61,37 @@ Open VS Code settings and add definitions such as:
 Then headings can be embedded in any text document:
 
 ```text
-// @h1 Introduction
-// @h2 Installation
-// @h3 Requirements
-// @h2 Usage
+# @h1 ---- A title ----
+// @h2 [[ Installation ]]
+// @h3 < Requirements >>
+// @h2 [[ Usage ]]
 ```
 
-The view displays:
+The first pane label is exactly `A title`. The complete view displays:
 
 ```text
-Introduction
+A title
 ├─ Section: Installation
 │  └─ Requirements
 └─ Section: Usage
 ```
 
 Trigger snippets are literal strings and may appear anywhere on a line. They do not need to be inside comments.
+
+### Label delimiters
+
+Optional `labelDelimiters` apply only to text after that trigger. Each trigger can
+use different symmetric or asymmetric `start` and `end` strings, as in the mixed
+configuration above. After surrounding whitespace is trimmed, both complete
+delimiters must match exactly, without overlap. Matching is case-sensitive even
+when trigger matching is case-insensitive.
+
+Extraction is all-or-nothing: both delimiters are stripped together and the
+resulting title is trimmed. If either delimiter is missing or incomplete while
+typing, neither is stripped and the original text after the trigger is used,
+without a runtime warning. A malformed delimiter configuration reports a
+configuration warning but leaves the trigger active with delimiter extraction
+disabled.
 
 ### Label templates
 
@@ -78,6 +106,19 @@ Each trigger's `labelTemplate` can contain:
 | `${lineNumber}` | One-based line number |
 
 The default template is `${after}`. Empty labels are shown as `Untitled heading (line N)`.
+Delimiter extraction changes only `${after}`; `${line}` and `${before}` retain
+their raw source text.
+
+### Explorer presentation
+
+The tree uses quiet, similarly scaled, theme-compatible symbols in the normal
+16-pixel icon slot: a filled circle (`circle-filled`) for level 1, an open circle
+(`circle-outline`) for level 2, a compact custom plus for level 3, and a native
+dash (`dash`) for level 4 and above. The custom plus avoids the larger visual
+footprint of VS Code's native `add` icon. The gutter uses the same shape mapping
+with custom light/dark SVGs on a consistent 16-pixel grid. Each row shows only
+`line N` as its description. Its accessibility label also states the heading
+label, level, and line number.
 
 ### Other settings
 

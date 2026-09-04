@@ -1,3 +1,5 @@
+import type { LabelDelimiters } from "./model";
+
 export interface LabelTemplateContext {
   readonly after: string;
   readonly before: string;
@@ -15,6 +17,24 @@ const supportedPlaceholders = new Set([
 ]);
 
 const placeholderPattern = /\$\{([^}]*)\}/g;
+
+/** Extracts a trimmed title only when both delimiters match without overlap. */
+export function extractDelimitedAfter(
+  after: string,
+  delimiters: LabelDelimiters,
+): string {
+  const trimmedAfter = after.trim();
+  const titleStart = delimiters.start.length;
+  const titleEnd = trimmedAfter.length - delimiters.end.length;
+  if (
+    !trimmedAfter.startsWith(delimiters.start)
+    || !trimmedAfter.endsWith(delimiters.end)
+    || titleStart > titleEnd
+  ) {
+    return after;
+  }
+  return trimmedAfter.slice(titleStart, titleEnd).trim();
+}
 
 /** Returns the first unsupported placeholder, including its template delimiters. */
 export function findUnsupportedPlaceholder(template: string): string | undefined {

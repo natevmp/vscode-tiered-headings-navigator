@@ -1,6 +1,6 @@
 # Tiered Headings Navigator — Product Specification
 
-**Status:** Draft v0.2
+**Status:** Draft v0.3
 **Product type:** Visual Studio Code desktop extension
 
 ## Summary
@@ -12,6 +12,7 @@ The view follows the active text editor. Selecting a heading navigates to its so
 ## Terminology
 
 - **Trigger snippet:** A user-defined literal string associated with a positive integer level.
+- **Label delimiters:** Optional exact start and end strings used to extract `${after}` for one trigger.
 - **Heading:** A detected occurrence of a trigger snippet and its source location.
 - **Parent:** The nearest preceding heading with a lower numeric level that remains open.
 - **Ancestor:** Any parent, parent's parent, and so forth.
@@ -30,8 +31,10 @@ The first release shall:
 7. Allow headings with children to be expanded and collapsed.
 8. Navigate to a heading's line when selected.
 9. Update automatically as the unsaved document changes.
-10. Display the same gutter marker beside every detected heading.
+10. Display a gutter marker matching each detected heading's level category.
 11. Apply configurable bold and italic whole-line styles by heading level.
+12. Support optional literal, per-trigger label delimiters.
+13. Present heading levels with quiet, similarly scaled shape icons.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -45,17 +48,20 @@ Proposed configuration:
     {
       "snippet": "@h1",
       "level": 1,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelDelimiters": { "start": "----", "end": "----" }
     },
     {
       "snippet": "@h2",
       "level": 2,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelDelimiters": { "start": "[[", "end": "]]" }
     },
     {
       "snippet": "@h3",
       "level": 3,
-      "labelTemplate": "Part: ${after}"
+      "labelTemplate": "Part: ${after}",
+      "labelDelimiters": { "start": "<", "end": ">>" }
     }
   ],
   "tieredHeadings.caseSensitive": true,
@@ -78,7 +84,17 @@ Each label template may use:
 
 The formatted result is trimmed. An empty result becomes `Untitled heading (line N)`.
 
-Invalid definitions must not crash the extension. Valid definitions continue working, while a concise warning identifies the invalid setting.
+When a trigger has `labelDelimiters`, only its text after the matched trigger is
+eligible for extraction. Surrounding whitespace is trimmed first. Both non-empty,
+single-line delimiters must match as complete, exact, case-sensitive strings and
+must not overlap. They are then removed atomically and the extracted title is
+trimmed before it is supplied as `${after}`. If either delimiter does not match,
+the original after text is supplied without partial stripping or a runtime
+warning. `${before}` and `${line}` remain raw. Delimiter case sensitivity is
+independent of trigger case sensitivity, and each trigger may use different,
+including asymmetric, delimiters.
+
+Invalid definitions must not crash the extension. Valid definitions continue working, while a concise warning identifies the invalid setting. Malformed `labelDelimiters` reports actionable configuration issues but does not discard an otherwise valid trigger; that trigger instead operates without delimiter extraction.
 
 Level styles accept `normal`, `bold`, `italic`, or `boldItalic`. Unlisted levels
 remain unchanged, and an empty style array disables editor text styling.
@@ -149,16 +165,18 @@ Thus:
 - Leaf headings have no collapse control.
 - Labels use the configured templates.
 - Tooltips include level, line number, and complete source line.
-- Native, theme-compatible icons distinguish levels 1, 2, 3, and higher levels.
+- Similarly scaled, theme-compatible icons distinguish levels in the normal 16-pixel slot: native `circle-filled` for level 1, native `circle-outline` for level 2, a compact custom plus for level 3, and native `dash` for level 4 and above.
+- Each row description is `line N`; an accessibility label explicitly includes the heading label, level, and line number.
 - Clicking a heading places the cursor at its trigger and reveals the line.
 - An empty view explains whether no editor, no configured triggers, or no matches are present and provides a configuration action.
 - A **Tiered Headings: Show Headings** command opens Explorer and focuses the view.
 
 ## Gutter marker
 
-- Every detected heading in the active editor receives the same theme-compatible gutter icon.
+- Every detected heading in the active editor receives the shape matching the pane mapping: filled circle for level 1, open circle for level 2, plus for level 3, and dash for level 4 and above.
+- Custom gutter SVGs use consistent 16-by-16 grids, approximately 8-by-8 visible bounds, neutral base fallbacks, and light/dark variants.
 - Markers update alongside the tree and disappear when headings are removed.
-- Per-level gutter colors and trigger-only highlighting are outside the initial release.
+- Per-level gutter colors and trigger-only highlighting are outside the initial release; marker shapes vary by level but use common neutral colors.
 - The marker can be disabled without disabling navigation.
 
 ## Editor heading styles
@@ -188,10 +206,11 @@ Thus:
 - Selecting any heading navigates to the correct line and trigger.
 - Unsaved edits add, remove, rename, and re-parent headings without manual refresh.
 - Switching active editors replaces the pane contents.
-- Exactly one gutter marker appears per detected heading line.
+- Exactly one correctly shaped gutter marker appears per detected heading line.
 - Default whole-line styles match the configured level 1–3 behavior, while higher levels remain normal.
 - The Show Headings command reveals and focuses the Explorer view.
 - Invalid configuration reports an actionable warning without disabling valid triggers.
+- Exact, non-overlapping delimiter pairs extract `${after}` atomically; incomplete pairs preserve the original after text without runtime warnings.
 - Documents without headings show appropriate welcome content.
 
 ## Technical direction

@@ -1,6 +1,7 @@
 import type {
   HeadingStyleMap,
   HeadingTextStyle,
+  LabelDelimiters,
   LevelStyleDefinition,
   TriggerDefinition,
 } from "./model";
@@ -35,7 +36,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const allowedTriggerKeys = new Set(["snippet", "level", "labelTemplate"]);
+const allowedTriggerKeys = new Set([
+  "snippet",
+  "level",
+  "labelTemplate",
+  "labelDelimiters",
+]);
+const allowedLabelDelimiterKeys = new Set(["start", "end"]);
 const allowedLevelStyleKeys = new Set(["level", "style"]);
 const triggerSettingKey = "tieredHeadings.triggers";
 const levelStyleSettingKey = "tieredHeadings.editor.levelStyles";
@@ -54,6 +61,61 @@ function attachSettingKey(
     ...issue,
     settingKey,
   }));
+}
+
+function parseLabelDelimiters(
+  raw: unknown,
+  triggerIndex: number,
+  issue_issueId: ConfigurationIssue[],
+): LabelDelimiters | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!isRecord(raw)) {
+    issue_issueId.push({
+      triggerIndex,
+      message: `Trigger ${triggerIndex + 1} labelDelimiters must be an object.`,
+    });
+    return undefined;
+  }
+
+  let valid = true;
+  Object.keys(raw).forEach((key: string): void => {
+    if (!allowedLabelDelimiterKeys.has(key)) {
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} labelDelimiters contains unsupported property "${key}".`,
+      });
+      valid = false;
+    }
+  });
+
+  const validateDelimiter = (field: "start" | "end"): string | undefined => {
+    const value = raw[field];
+    if (typeof value !== "string" || value.length === 0) {
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} labelDelimiters.${field} must be a non-empty string.`,
+      });
+      valid = false;
+      return undefined;
+    }
+    if (/[\r\n]/.test(value)) {
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} labelDelimiters.${field} cannot contain a line break.`,
+      });
+      valid = false;
+      return undefined;
+    }
+    return value;
+  };
+
+  const start = validateDelimiter("start");
+  const end = validateDelimiter("end");
+  return valid && start !== undefined && end !== undefined
+    ? { start, end }
+    : undefined;
 }
 
 /** Parses untrusted trigger configuration while retaining every valid definition. */
@@ -88,6 +150,11 @@ export function parseTriggerDefinitions(
     const snippet = item.snippet;
     const level = item.level;
     const rawTemplate = item.labelTemplate;
+    const labelDelimiters = parseLabelDelimiters(
+      item.labelDelimiters,
+      triggerIndex,
+      issue_issueId,
+    );
 
     Object.keys(item).forEach((key: string): void => {
       if (!allowedTriggerKeys.has(key)) {
@@ -157,7 +224,9 @@ export function parseTriggerDefinitions(
       return;
     }
 
-    trigger_triggerId.push({ snippet, level, labelTemplate });
+    trigger_triggerId.push(labelDelimiters === undefined
+      ? { snippet, level, labelTemplate }
+      : { snippet, level, labelTemplate, labelDelimiters });
   });
 
   return {
