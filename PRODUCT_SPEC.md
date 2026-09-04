@@ -1,13 +1,13 @@
 # Tiered Headings Navigator — Product Specification
 
-**Status:** Draft v0.4
+**Status:** Draft v0.5
 **Product type:** Visual Studio Code desktop extension
 
 ## Summary
 
 Tiered Headings Navigator detects user-defined heading snippets embedded in text documents, displays the resulting headings as a collapsible hierarchy in a new Explorer view, and supplies matching native editor folding ranges.
 
-The view follows the active text editor. Selecting a heading navigates to its source line. Heading levels behave like Markdown heading levels, with smaller integers representing higher-level headings.
+The view follows the active text editor and selects the heading section containing the primary cursor. Selecting a heading navigates to its source line. Heading levels behave like Markdown heading levels, with smaller integers representing higher-level headings.
 
 ## Terminology
 
@@ -36,6 +36,9 @@ The first release shall:
 12. Support optional literal, per-trigger label delimiters.
 13. Present heading levels with quiet, similarly scaled shape icons.
 14. Provide native editor folding sections derived from heading hierarchy.
+15. Select and reveal the current heading as the primary editor cursor moves.
+16. Optionally synchronize parent-heading collapse and expand actions from the
+    Explorer view to editor folding.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -68,6 +71,7 @@ Proposed configuration:
   "tieredHeadings.caseSensitive": true,
   "tieredHeadings.gutter.enabled": true,
   "tieredHeadings.folding.enabled": true,
+  "tieredHeadings.folding.syncFromNavigator": false,
   "tieredHeadings.editor.levelStyles": [
     { "level": 1, "style": "bold" },
     { "level": 2, "style": "boldItalic" },
@@ -183,6 +187,16 @@ Thus:
 - VS Code owns range merging and collapsed-state reconciliation. A language
   provider that begins a fold on the same line can take precedence, and an
   indentation-only folding strategy can suppress provider-based ranges.
+- `tieredHeadings.folding.syncFromNavigator` is a resource-scoped, opt-in
+  setting that defaults to `false`.
+- When synchronization is enabled, collapsing a parent heading in the
+  **Headings** view folds its editor section and expanding it unfolds that
+  section. Leaf headings do not initiate folding commands.
+- Synchronization requires `tieredHeadings.folding.enabled` and
+  `editor.folding`, and is skipped for the `indentation` folding strategy.
+- Synchronization is one-way. Editor gutter, keybinding, and command folding do
+  not alter tree expansion, and the extension performs no initial-state
+  reconciliation or fold-state persistence.
 
 ## Explorer view
 
@@ -195,6 +209,14 @@ Thus:
 - Similarly scaled, theme-compatible icons distinguish levels in the normal 16-pixel slot: native `circle-filled` for level 1, native `circle-outline` for level 2, a compact custom plus for level 3, and native `dash` for level 4 and above.
 - Each row description is `line N`; an accessibility label explicitly includes the heading label, level, and line number.
 - Clicking a heading places the cursor at its trigger and reveals the line.
+- While the view is visible, its native selection follows the heading section
+  containing the primary selection's active cursor. The current section is the
+  rightmost heading whose source line is at or before the cursor line.
+- Cursor following reveals and selects the row without taking keyboard focus.
+  Required ancestors expand, but the selected heading itself is not expanded.
+- A hidden view is not opened for cursor following and catches up when next
+  shown. Before the first heading, no new selection is made; an existing native
+  selection can remain because the stable Tree View API cannot clear it.
 - An empty view explains whether no editor, no configured triggers, or no matches are present and provides a configuration action.
 - A **Tiered Headings: Show Headings** command opens Explorer and focuses the view.
 
@@ -221,8 +243,9 @@ Thus:
 - Persistent bookmarks independent of document text.
 - Commands that insert or edit headings.
 - Next/previous heading commands.
-- Cursor-following selection in the tree.
-- Automatic folding or extension-managed persistence of collapsed state.
+- Reverse editor-to-tree folding synchronization.
+- Automatic fold-state reconciliation or extension-managed persistence of
+  collapsed state.
 - Outline, breadcrumb, or Document Symbol integration.
 - Per-tier font sizes or arbitrary CSS.
 - Language-aware comment detection.
@@ -249,6 +272,12 @@ Thus:
 - Disabling `tieredHeadings.folding.enabled` stops custom range contribution
   without disabling navigation, styling, or gutter markers; already-collapsed
   recovered editor state follows VS Code's documented platform behavior.
+- Moving the primary cursor selects the last heading on or before its active
+  line, expands required ancestors, and does not focus or open the view.
+- With navigator synchronization enabled, real parent-row collapse and expand
+  actions fold and unfold the matching editor section. The option defaults off,
+  leaf rows and editor-originated folding do not synchronize, and all documented
+  folding-setting gates are honored.
 
 ## Technical direction
 

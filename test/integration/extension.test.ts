@@ -26,12 +26,24 @@ interface HeadingNavigationTarget {
   readonly modelGeneration: number;
 }
 
+interface TreeSelectionItem {
+  readonly id: string;
+  readonly label: string;
+  readonly line: number;
+}
+
 const extensionId = "local.tiered-headings-navigator";
 const inspectCommand = "_tieredHeadings.getActiveSnapshot";
 const inspectTargetsCommand = "_tieredHeadings.getTreeNavigationTargets";
 const inspectViewVisibleCommand = "_tieredHeadings.isViewVisible";
 const inspectTreeItemsCommand = "_tieredHeadings.getTreeItems";
 const inspectFoldingRangesCommand = "_tieredHeadings.getFoldingRanges";
+const inspectTreeSelectionCommand = "_tieredHeadings.getTreeSelection";
+const focusTreeItemCommand = "_tieredHeadings.focusTreeItem";
+const applyNavigatorFoldingStateCommand = "_tieredHeadings.applyNavigatorFoldingState";
+const waitForPendingInteractionsCommand = "_tieredHeadings.waitForPendingInteractions";
+const pinnedListCommandWaitMilliseconds = 250;
+let pinnedListCommandError: Error | undefined;
 
 async function openSampleDocument(): Promise<vscode.TextEditor> {
   return openFixtureDocument("sample.txt");
@@ -43,6 +55,10 @@ async function openFoldingDemoDocument(): Promise<vscode.TextEditor> {
 
 async function openIndentedDocument(): Promise<vscode.TextEditor> {
   return openFixtureDocument("indented-no-headings.txt");
+}
+
+async function openIndentedHeadingDocument(): Promise<vscode.TextEditor> {
+  return openFixtureDocument("indented-headings.txt");
 }
 
 async function openFixtureDocument(fixtureName: string): Promise<vscode.TextEditor> {
@@ -157,6 +173,29 @@ async function waitForHeadingCount(
   return snapshot;
 }
 
+async function waitForDocumentHeadingCount(
+  document: vscode.TextDocument,
+  expectedCount: number,
+): Promise<ActiveHeadingSnapshot> {
+  const documentIdentity = document.uri.toString();
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const snapshot = await readActiveSnapshot();
+    if (
+      snapshot?.documentIdentity === documentIdentity
+      && snapshot.heading_headingId.length === expectedCount
+    ) {
+      return snapshot;
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  throw new Error(
+    `The active heading model for ${documentIdentity} did not reach ${expectedCount} headings.`,
+  );
+}
+
 async function waitForNewerModel(
   previousGeneration: number,
   expectedCount: number,
@@ -195,6 +234,77 @@ async function waitForViewVisibility(expectedVisibility: boolean): Promise<void>
     await vscode.commands.executeCommand<boolean>(inspectViewVisibleCommand),
     expectedVisibility,
   );
+}
+
+async function readTreeSelection(): Promise<readonly TreeSelectionItem[]> {
+  return vscode.commands.executeCommand<readonly TreeSelectionItem[]>(
+    inspectTreeSelectionCommand,
+  );
+}
+
+async function waitForTreeSelection(expectedLabel: string): Promise<TreeSelectionItem> {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const selection_selectionId = await readTreeSelection();
+    if (selection_selectionId.length === 1 && selection_selectionId[0]?.label === expectedLabel) {
+      return selection_selectionId[0];
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  const selection_selectionId = await readTreeSelection();
+  assert.equal(selection_selectionId.length, 1);
+  assert.equal(selection_selectionId[0]?.label, expectedLabel);
+  return selection_selectionId[0];
+}
+
+function lineIsVisible(editor: vscode.TextEditor, line: number): boolean {
+  return editor.visibleRanges.some((range: vscode.Range): boolean => (
+    range.start.line <= line && range.end.line >= line
+  ));
+}
+
+async function waitForLineVisibility(
+  editor: vscode.TextEditor,
+  line: number,
+  expectedVisibility: boolean,
+): Promise<void> {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    if (lineIsVisible(editor, line) === expectedVisibility) {
+      return;
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  assert.equal(lineIsVisible(editor, line), expectedVisibility);
+}
+
+async function executePinnedListCommand(command: "list.collapse" | "list.expand"): Promise<void> {
+  const operation = vscode.commands.executeCommand(command).then(
+    (): void => {},
+    (error: unknown): void => {
+      pinnedListCommandError = error instanceof Error ? error : new Error(String(error));
+    },
+  );
+  await Promise.race([
+    operation,
+    new Promise<void>((resolve): void => {
+      setTimeout(resolve, pinnedListCommandWaitMilliseconds);
+    }),
+  ]);
+  throwPinnedListCommandError();
+}
+
+function throwPinnedListCommandError(): void {
+  if (pinnedListCommandError === undefined) {
+    return;
+  }
+  const error = pinnedListCommandError;
+  pinnedListCommandError = undefined;
+  throw error;
 }
 
 type FoldingLineRange = readonly [startLine: number, endLine: number];
@@ -289,6 +399,7 @@ suite("Tiered Headings extension", (): void => {
 
   suiteTeardown(async (): Promise<void> => {
     await openSampleDocument();
+    throwPinnedListCommandError();
   });
 
   test("scans the configured headings in the active document", async (): Promise<void> => {
@@ -442,6 +553,382 @@ suite("Tiered Headings extension", (): void => {
     await vscode.commands.executeCommand("tieredHeadings.showHeadings");
 
     await waitForViewVisibility(true);
+  });
+
+  test("selects the heading section containing the primary cursor", async (): Promise<void> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("The integration workspace must be open.");
+    }
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
+    );
+    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    await waitForHeadingCount(8);
+    await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+    await waitForViewVisibility(true);
+
+    const expectation_expectationId: readonly [number, string][] = [
+      [2, "A"],
+      [6, "B"],
+      [10, "C"],
+      [18, "E"],
+      [22, "F"],
+      [26, "G"],
+      [30, "H"],
+    ];
+    for (const [line, label] of expectation_expectationId) {
+      const position = new vscode.Position(line, 0);
+      editor.selection = new vscode.Selection(position, position);
+      const selectedHeading = await waitForTreeSelection(label);
+      assert.equal(selectedHeading.line <= line, true);
+      assert.equal(vscode.window.activeTextEditor, editor);
+    }
+
+    const primaryPosition = new vscode.Position(6, 0);
+    const secondaryPosition = new vscode.Position(30, 0);
+    editor.selections = [
+      new vscode.Selection(primaryPosition, primaryPosition),
+      new vscode.Selection(secondaryPosition, secondaryPosition),
+    ];
+    await waitForTreeSelection("B");
+
+    await openSampleDocument();
+    await waitForHeadingCount(3);
+  });
+
+  test("does not open a hidden view and catches up when it becomes visible", async (): Promise<void> => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (workspaceFolder === undefined) {
+      throw new Error("The integration workspace must be open.");
+    }
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
+    );
+    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    await waitForHeadingCount(8);
+    await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+    await waitForViewVisibility(true);
+
+    const lastPosition = new vscode.Position(30, 0);
+    editor.selection = new vscode.Selection(lastPosition, lastPosition);
+    await waitForTreeSelection("H");
+    await vscode.commands.executeCommand("workbench.action.closeSidebar");
+    await waitForViewVisibility(false);
+
+    const hiddenPosition = new vscode.Position(6, 0);
+    editor.selection = new vscode.Selection(hiddenPosition, hiddenPosition);
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 100);
+    });
+    assert.equal(
+      await vscode.commands.executeCommand<boolean>(inspectViewVisibleCommand),
+      false,
+    );
+
+    await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+    await waitForViewVisibility(true);
+    await waitForTreeSelection("B");
+
+    await openSampleDocument();
+    await waitForHeadingCount(3);
+  });
+
+  test("synchronizes navigator parent folding to the editor when enabled", async (): Promise<void> => {
+    const editor = await openFoldingDemoDocument();
+    const { document } = editor;
+    await waitForHeadingCount(5);
+    const configuration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const previousSyncValue = configuration.inspect<boolean>(
+      "folding.syncFromNavigator",
+    )?.workspaceFolderValue;
+
+    try {
+      await vscode.commands.executeCommand("editor.unfoldAll");
+      editor.revealRange(document.lineAt(0).range, vscode.TextEditorRevealType.AtTop);
+      await waitForLineVisibility(editor, 3, true);
+
+      const initialSnapshot = await waitForHeadingCount(5);
+      const beta = initialSnapshot.heading_headingId.find(
+        (heading): boolean => heading.label === "Beta",
+      );
+      const gamma = initialSnapshot.heading_headingId.find(
+        (heading): boolean => heading.label === "Gamma",
+      );
+      const alpha = initialSnapshot.heading_headingId.find(
+        (heading): boolean => heading.label === "Alpha",
+      );
+      if (alpha === undefined || beta === undefined || gamma === undefined) {
+        throw new Error("Expected Alpha, Beta, and Gamma headings in folding-demo.txt.");
+      }
+
+      assert.equal(configuration.get("folding.syncFromNavigator"), false);
+      const gammaBodyPosition = new vscode.Position(gamma.line + 1, 0);
+      editor.selection = new vscode.Selection(gammaBodyPosition, gammaBodyPosition);
+      await waitForTreeSelection("Gamma");
+      assert.equal(
+        await vscode.commands.executeCommand<boolean>(focusTreeItemCommand, beta.id),
+        true,
+      );
+      await executePinnedListCommand("list.collapse");
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, beta.line + 1), true);
+
+      const laterGammaPosition = new vscode.Position(gamma.line + 2, 0);
+      editor.selection = new vscode.Selection(laterGammaPosition, laterGammaPosition);
+      await waitForTreeSelection("Gamma");
+
+      assert.equal(
+        await vscode.commands.executeCommand<boolean>(
+          applyNavigatorFoldingStateCommand,
+          beta.id,
+          false,
+        ),
+        true,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 3), true);
+
+      await configuration.update(
+        "folding.syncFromNavigator",
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await vscode.commands.executeCommand("tieredHeadings.refresh");
+      const enabledSnapshot = await waitForHeadingCount(5);
+      const enabledHeadingByLabel = new Map(
+        enabledSnapshot.heading_headingId.map((heading): [string, HeadingSnapshot] => [
+          heading.label,
+          heading,
+        ]),
+      );
+      const enabledAlpha = enabledHeadingByLabel.get("Alpha");
+      const enabledBeta = enabledHeadingByLabel.get("Beta");
+      const enabledGamma = enabledHeadingByLabel.get("Gamma");
+      if (enabledAlpha === undefined || enabledBeta === undefined || enabledGamma === undefined) {
+        throw new Error("Expected refreshed folding headings.");
+      }
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        enabledBeta.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await waitForLineVisibility(editor, 3, false);
+      assert.equal(lineIsVisible(editor, 7), true);
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        enabledBeta.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 7), true);
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        enabledBeta.id,
+        true,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await waitForLineVisibility(editor, 3, true);
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        enabledGamma.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 5), true);
+
+      const alphaPosition = new vscode.Position(enabledAlpha.line, 0);
+      editor.selection = new vscode.Selection(alphaPosition, alphaPosition);
+      await waitForTreeSelection("Alpha");
+      await vscode.commands.executeCommand("tieredHeadings.showHeadings");
+      assert.equal(
+        await vscode.commands.executeCommand<boolean>(focusTreeItemCommand, enabledAlpha.id),
+        true,
+      );
+
+      // These pinned workbench commands exercise the real TreeView event path.
+      await executePinnedListCommand("list.collapse");
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await waitForLineVisibility(editor, 1, false);
+      throwPinnedListCommandError();
+
+      await executePinnedListCommand("list.expand");
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await waitForLineVisibility(editor, 1, true);
+      throwPinnedListCommandError();
+    } finally {
+      await vscode.commands.executeCommand("editor.unfoldAll");
+      await configuration.update(
+        "folding.syncFromNavigator",
+        previousSyncValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
+  });
+
+  test("honors custom and language-scoped editor folding gates", async (): Promise<void> => {
+    const editor = await openIndentedHeadingDocument();
+    const { document } = editor;
+    await vscode.commands.executeCommand("tieredHeadings.refresh");
+    await waitForDocumentHeadingCount(document, 3);
+    const headingConfiguration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const editorConfiguration = vscode.workspace.getConfiguration("editor", {
+      uri: document.uri,
+      languageId: document.languageId,
+    });
+    const readEditorConfiguration = (): vscode.WorkspaceConfiguration => (
+      vscode.workspace.getConfiguration("editor", {
+        uri: document.uri,
+        languageId: document.languageId,
+      })
+    );
+    const previousSyncValue = headingConfiguration.inspect<boolean>(
+      "folding.syncFromNavigator",
+    )?.workspaceFolderValue;
+    const previousFoldingEnabledValue = headingConfiguration.inspect<boolean>(
+      "folding.enabled",
+    )?.workspaceFolderValue;
+    const previousEditorFoldingValue = editorConfiguration.inspect<boolean>(
+      "folding",
+    )?.workspaceFolderLanguageValue;
+    const previousFoldingStrategyValue = editorConfiguration.inspect<string>(
+      "foldingStrategy",
+    )?.workspaceFolderLanguageValue;
+
+    try {
+      await vscode.commands.executeCommand("editor.unfoldAll");
+      editor.revealRange(document.lineAt(0).range, vscode.TextEditorRevealType.AtTop);
+      await waitForLineVisibility(editor, 1, true);
+      await headingConfiguration.update(
+        "folding.syncFromNavigator",
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await headingConfiguration.update(
+        "folding.enabled",
+        false,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await vscode.commands.executeCommand("tieredHeadings.refresh");
+      let snapshot = await waitForDocumentHeadingCount(document, 3);
+      let alpha = snapshot.heading_headingId.find(
+        (heading): boolean => heading.label === "Alpha",
+      );
+      if (alpha === undefined) {
+        throw new Error("Expected Alpha in indented-headings.txt.");
+      }
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        alpha.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 1), true);
+
+      await headingConfiguration.update(
+        "folding.enabled",
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await editorConfiguration.update(
+        "folding",
+        false,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+        true,
+      );
+      assert.equal(
+        readEditorConfiguration().get("folding"),
+        false,
+      );
+      await vscode.commands.executeCommand("tieredHeadings.refresh");
+      snapshot = await waitForDocumentHeadingCount(document, 3);
+      alpha = snapshot.heading_headingId.find(
+        (heading): boolean => heading.label === "Alpha",
+      );
+      if (alpha === undefined) {
+        throw new Error("Expected refreshed Alpha heading.");
+      }
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        alpha.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 1), true);
+
+      await editorConfiguration.update(
+        "folding",
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+        true,
+      );
+      await editorConfiguration.update(
+        "foldingStrategy",
+        "indentation",
+        vscode.ConfigurationTarget.WorkspaceFolder,
+        true,
+      );
+      assert.equal(readEditorConfiguration().get("folding"), true);
+      assert.equal(readEditorConfiguration().get("foldingStrategy"), "indentation");
+      await vscode.commands.executeCommand("editor.unfoldAll");
+
+      await vscode.commands.executeCommand(
+        applyNavigatorFoldingStateCommand,
+        alpha.id,
+        false,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      assert.equal(lineIsVisible(editor, 1), true);
+
+      // Prove that an unguarded fold command would act on the indentation range.
+      await vscode.commands.executeCommand("editor.fold", {
+        direction: "down",
+        levels: 1,
+        selectionLines: [alpha.line],
+      });
+      await waitForLineVisibility(editor, 1, false);
+    } finally {
+      await vscode.commands.executeCommand("editor.unfoldAll");
+      await editorConfiguration.update(
+        "folding",
+        previousEditorFoldingValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+        true,
+      );
+      await editorConfiguration.update(
+        "foldingStrategy",
+        previousFoldingStrategyValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+        true,
+      );
+      await headingConfiguration.update(
+        "folding.enabled",
+        previousFoldingEnabledValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await headingConfiguration.update(
+        "folding.syncFromNavigator",
+        previousSyncValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      const sampleEditor = await openSampleDocument();
+      await waitForDocumentHeadingCount(sampleEditor.document, 3);
+    }
   });
 
   test("uses level symbols and accessible line-only descriptions", async (): Promise<void> => {

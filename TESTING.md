@@ -25,23 +25,39 @@ their first use. Packaging also runs the complete verification suite.
 9. Confirm each row description is only `line N`, with no `Lx` text.
 10. Where practical, inspect the tree with a screen reader and confirm each row announces its heading label, level, and line number.
 11. Click **Details** and confirm the cursor moves to its `@h3` trigger.
-12. Add, rename, or remove a heading without saving and confirm the tree updates shortly afterward.
-13. Collapse **Introduction** and confirm its descendants disappear.
-14. Open `hierarchy-demo.txt` and compare the tree with the expected hierarchy below.
-15. Now confirm all four gutter and pane shapes at a similar visual scale: filled circle/`circle-filled` for level 1, open circle/`circle-outline` for level 2, compact plus for level 3, and dash/`dash` for level 4 and higher.
-16. Switch between light and dark themes. Confirm all four gutter shapes remain similarly scaled, subtle, and visible, and the native pane symbols remain theme-compatible.
-17. Open `folding-demo.txt` and hover over the editor gutter. Confirm native fold
+12. Click in the body beneath **Installation** and then beneath **Details**.
+    Confirm the matching tree row is selected, required ancestors expand, and
+    keyboard focus remains in the editor.
+13. Give the editor multiple cursors in different sections and confirm the tree
+    follows the primary selection's active cursor.
+14. Hide Explorer, move the cursor to another heading section, and confirm the
+    sidebar stays hidden. Show **Headings** and confirm its selection catches up.
+15. Add, rename, or remove a heading without saving and confirm the tree updates shortly afterward.
+16. Collapse **Introduction** and confirm its descendants disappear.
+17. Open `hierarchy-demo.txt` and compare the tree with the expected hierarchy below.
+18. Now confirm all four gutter and pane shapes at a similar visual scale: filled circle/`circle-filled` for level 1, open circle/`circle-outline` for level 2, compact plus for level 3, and dash/`dash` for level 4 and higher.
+19. Switch between light and dark themes. Confirm all four gutter shapes remain similarly scaled, subtle, and visible, and the native pane symbols remain theme-compatible.
+20. Open `folding-demo.txt` and hover over the editor gutter. Confirm native fold
     controls appear for headings that contain at least one following line.
-18. Fold **Alpha** and confirm its heading remains visible while everything
+21. Fold **Alpha** and confirm its heading remains visible while everything
     through the line before **Epsilon** is hidden. Unfold it and confirm **Beta**,
     **Gamma**, and **Delta** provide correctly nested or adjacent folds.
-19. Edit a heading level without saving and confirm the fold boundaries update.
-20. Open `sample.txt` beside `folding-demo.txt` and confirm both editors retain
+22. Edit a heading level without saving and confirm the fold boundaries update.
+23. Open `sample.txt` beside `folding-demo.txt` and confirm both editors retain
     heading-derived folding ranges regardless of which editor is active.
-21. Run normal **Fold All** and confirm heading folds participate. Confirm **Fold
+24. Run normal **Fold All** and confirm heading folds participate. Confirm **Fold
     All Regions** does not specifically treat these headings as marker regions.
-22. Open `indented-no-headings.txt` and confirm its ordinary indentation-based
+25. Open `indented-no-headings.txt` and confirm its ordinary indentation-based
     folds remain available even though no configured heading occurs in it.
+26. Enable `tieredHeadings.folding.syncFromNavigator`, return to
+    `folding-demo.txt`, and collapse and expand **Alpha** with its tree twisty.
+    Confirm the matching editor section folds and unfolds while the tree keeps
+    keyboard focus.
+27. Collapse and expand **Beta** repeatedly and confirm the commands remain
+    idempotent and do not fold **Alpha**. Confirm leaf rows have no twisty.
+28. Fold or unfold a section from the editor gutter and confirm that action does
+    not change tree expansion. Disable navigator synchronization and confirm tree
+    collapse and expand actions no longer alter editor folding.
 
 Expected hierarchy for `hierarchy-demo.txt`:
 
@@ -112,3 +128,9 @@ do not appear, confirm VS Code's `editor.folding` is enabled,
 `editor.showFoldingControls` is not `never`, and `editor.foldingStrategy` is
 `auto`. Also sample a language with its own folding provider and confirm any
 same-line precedence is acceptable.
+
+With `tieredHeadings.folding.syncFromNavigator` enabled, separately disable
+`tieredHeadings.folding.enabled` and `editor.folding`, then set a
+language-specific `editor.foldingStrategy` to `indentation`. In each case,
+confirm tree collapse and expand actions leave editor folding unchanged. Restore
+the default `auto` strategy afterward.

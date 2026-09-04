@@ -9,8 +9,10 @@ Tiered Headings Navigator is a local-first Visual Studio Code extension that tur
 - Distinguish levels with quiet, similarly scaled symbols and show `line N` beside each label.
 - Expand and collapse nested headings.
 - Click a heading to reveal its trigger in the editor.
+- Follow the primary editor cursor by selecting its current heading in the tree.
 - Update the tree from unsaved edits.
 - Fold each heading's editor section with native VS Code folding controls.
+- Optionally mirror parent-heading collapse and expand actions from the tree to the editor.
 - Show the corresponding level symbol in the editor gutter.
 - Style complete heading lines by level, with configurable bold and italic defaults.
 - Keep all processing local, with no telemetry or network access.
@@ -20,6 +22,19 @@ Tiered Headings Navigator is a local-first Visual Studio Code extension that tur
 Run **Tiered Headings: Show Headings** from the Command Palette. This opens
 Explorer and focuses the **Headings** view, including when VS Code has
 previously hidden or moved it.
+
+### Cursor following
+
+While the **Headings** view is visible, its native row selection follows the
+section containing the primary editor cursor. The current section is the last
+heading on or before the cursor line. Revealing that row expands its tree
+ancestors when needed but does not move keyboard focus out of the editor.
+
+The extension does not open a hidden view just to follow the cursor; the
+selection catches up when the view next becomes visible. Before the document's
+first heading there is no current section. The stable Tree View API cannot clear
+an existing native selection, so the previously selected row may remain visible
+in that preamble.
 
 ## Configure heading triggers
 
@@ -144,6 +159,15 @@ precedence. Folding also depends on VS Code's `editor.folding`,
 `editor.showFoldingControls`, and `editor.foldingStrategy` settings; use the
 default `auto` strategy to allow provider-based ranges.
 
+Set `tieredHeadings.folding.syncFromNavigator` to `true` to make collapsing or
+expanding a parent heading in the **Headings** view fold or unfold that heading's
+editor section. This option is off by default and is deliberately one-way:
+folding in the editor does not change the tree. Leaf rows have no action, and
+the extension does not reconcile an initial state or persist synchronized fold
+state. Synchronization is skipped when custom heading folding or
+`editor.folding` is disabled, and when `editor.foldingStrategy` is
+`indentation`. Ordinary editor gutter and keybinding folds remain independent.
+
 ### Other settings
 
 ```json
@@ -151,6 +175,7 @@ default `auto` strategy to allow provider-based ranges.
   "tieredHeadings.caseSensitive": true,
   "tieredHeadings.gutter.enabled": true,
   "tieredHeadings.folding.enabled": true,
+  "tieredHeadings.folding.syncFromNavigator": false,
   "tieredHeadings.editor.levelStyles": [
     { "level": 1, "style": "bold" },
     { "level": 2, "style": "boldItalic" },

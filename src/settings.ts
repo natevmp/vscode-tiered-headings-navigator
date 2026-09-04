@@ -41,6 +41,7 @@ function parseBooleanSetting(
 export interface HeadingSettings {
   readonly caseSensitive: boolean;
   readonly foldingEnabled: boolean;
+  readonly foldingSyncFromNavigator: boolean;
   readonly gutterEnabled: boolean;
   readonly trigger_triggerId: TriggerDefinition[];
   readonly levelStyle_level: readonly LevelStyleDefinition[];
@@ -69,6 +70,11 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
     true,
     "tieredHeadings.folding.enabled",
   );
+  const foldingSyncFromNavigatorResult = parseBooleanSetting(
+    configuration.get<unknown>("folding.syncFromNavigator", false),
+    false,
+    "tieredHeadings.folding.syncFromNavigator",
+  );
   const rawTriggers = configuration.get<unknown>("triggers", []);
   const triggerResult = parseTriggerDefinitions(rawTriggers, caseSensitiveResult.value);
   const rawLevelStyles = configuration.get<unknown>(
@@ -86,11 +92,15 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
   if (foldingEnabledResult.issue !== undefined) {
     issue_issueId.push(foldingEnabledResult.issue);
   }
+  if (foldingSyncFromNavigatorResult.issue !== undefined) {
+    issue_issueId.push(foldingSyncFromNavigatorResult.issue);
+  }
   issue_issueId.push(...triggerResult.issue_issueId, ...levelStyleResult.issue_issueId);
 
   return {
     caseSensitive: caseSensitiveResult.value,
     foldingEnabled: foldingEnabledResult.value,
+    foldingSyncFromNavigator: foldingSyncFromNavigatorResult.value,
     gutterEnabled: gutterEnabledResult.value,
     trigger_triggerId: triggerResult.trigger_triggerId,
     levelStyle_level: levelStyleResult.levelStyle_level,

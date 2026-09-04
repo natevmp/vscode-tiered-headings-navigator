@@ -20,5 +20,9 @@
       "level": 4,
       "labelTemplate": "${after}"
     }
-  ]
+  ],
+  "[plaintext]": {
+    "editor.folding": true,
+    "editor.foldingStrategy": "auto"
+  }
 }

@@ -2,7 +2,7 @@
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate and fold user-defined, tiered inline headings in text documents.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -154,6 +154,12 @@
           "scope": "resource",
           "default": true,
           "description": "Provide native editor folding ranges for detected headings."
+        },
+        "tieredHeadings.folding.syncFromNavigator": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "markdownDescription": "When enabled, collapsing or expanding a parent heading in the **Headings** view folds or unfolds its editor section. This synchronization is one-way and requires custom heading folding, `editor.folding`, and the `auto` folding strategy."
         },
         "tieredHeadings.editor.levelStyles": {
           "type": "array",

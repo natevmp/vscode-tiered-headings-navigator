@@ -4,7 +4,7 @@ import { DecorationManager } from "./decorationManager";
 import { HeadingController, type ActiveHeadingSnapshot } from "./headingController";
 import { HeadingFoldingProvider } from "./headingFoldingProvider";
 import { HeadingTreeProvider } from "./headingTreeProvider";
-import type { HeadingNavigationTarget } from "./model";
+import type { HeadingNavigationTarget, HeadingNode } from "./model";
 import { affectsHeadingSettings } from "./settings";
 
 const viewId = "tieredHeadings.explorer";
@@ -57,6 +57,8 @@ export function activate(context: vscode.ExtensionContext): void {
       "tieredHeadings.showHeadings",
       async (): Promise<void> => {
         await vscode.commands.executeCommand("workbench.view.explorer");
+        controller.handleTreeVisibilityChange(treeView.visible);
+        await controller.waitForPendingInteractions();
         await vscode.commands.executeCommand(`${viewId}.focus`);
       },
     ),
@@ -66,47 +68,22 @@ export function activate(context: vscode.ExtensionContext): void {
         controller.navigateToHeading(target);
       },
     ),
-    vscode.commands.registerCommand(
-      "_tieredHeadings.getActiveSnapshot",
-      (): ActiveHeadingSnapshot | undefined => controller.getActiveSnapshot(),
-    ),
-    vscode.commands.registerCommand(
-      "_tieredHeadings.getTreeNavigationTargets",
-      (): readonly unknown[] => provider.getNavigationTargetsForTesting(),
-    ),
-    vscode.commands.registerCommand(
-      "_tieredHeadings.isViewVisible",
-      (): boolean => treeView.visible,
-    ),
-    vscode.commands.registerCommand(
-      "_tieredHeadings.getTreeItems",
-      (): readonly vscode.TreeItem[] => provider.getTreeItemsForTesting(),
-    ),
-    vscode.commands.registerCommand(
-      "_tieredHeadings.getFoldingRanges",
-      (documentUri: vscode.Uri): vscode.FoldingRange[] | undefined => {
-        const document = vscode.workspace.textDocuments.find(
-          (candidate: vscode.TextDocument): boolean => (
-            candidate.uri.toString() === documentUri.toString()
-          ),
-        );
-        if (document === undefined) {
-          return undefined;
-        }
-        const cancellationSource = new vscode.CancellationTokenSource();
-        try {
-          return foldingProvider.provideFoldingRanges(
-            document,
-            {},
-            cancellationSource.token,
-          );
-        } finally {
-          cancellationSource.dispose();
-        }
-      },
-    ),
     vscode.window.onDidChangeActiveTextEditor((): void => {
       controller.refresh();
+    }),
+    vscode.window.onDidChangeTextEditorSelection(
+      (event: vscode.TextEditorSelectionChangeEvent): void => {
+        controller.handleTextEditorSelectionChange(event);
+      },
+    ),
+    treeView.onDidChangeVisibility((event: vscode.TreeViewVisibilityChangeEvent): void => {
+      controller.handleTreeVisibilityChange(event.visible);
+    }),
+    treeView.onDidCollapseElement((event: vscode.TreeViewExpansionEvent<HeadingNode>): void => {
+      controller.handleNavigatorFoldingChange(event.element, false);
+    }),
+    treeView.onDidExpandElement((event: vscode.TreeViewExpansionEvent<HeadingNode>): void => {
+      controller.handleNavigatorFoldingChange(event.element, true);
     }),
     vscode.workspace.onDidChangeTextDocument(
       (event: vscode.TextDocumentChangeEvent): void => {
@@ -133,6 +110,89 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
   ];
+
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
+    disposable_disposableId.push(
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getActiveSnapshot",
+        (): ActiveHeadingSnapshot | undefined => controller.getActiveSnapshot(),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getTreeNavigationTargets",
+        (): readonly unknown[] => provider.getNavigationTargetsForTesting(),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.isViewVisible",
+        (): boolean => treeView.visible,
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getTreeItems",
+        (): readonly vscode.TreeItem[] => provider.getTreeItemsForTesting(),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getTreeSelection",
+        (): readonly unknown[] => treeView.selection.map((heading): unknown => ({
+          id: heading.id,
+          label: heading.label,
+          line: heading.line,
+        })),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.focusTreeItem",
+        async (headingId: string): Promise<boolean> => {
+          const heading = provider.getNodeById(headingId);
+          if (heading === undefined) {
+            return false;
+          }
+          await treeView.reveal(heading, {
+            select: true,
+            focus: true,
+            expand: 1,
+          });
+          await controller.waitForPendingInteractions();
+          return true;
+        },
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.applyNavigatorFoldingState",
+        (headingId: string, expanded: boolean): boolean => {
+          const heading = provider.getNodeById(headingId);
+          if (heading === undefined) {
+            return false;
+          }
+          controller.handleNavigatorFoldingChange(heading, expanded);
+          return true;
+        },
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.waitForPendingInteractions",
+        async (): Promise<void> => controller.waitForPendingInteractions(),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getFoldingRanges",
+        (documentUri: vscode.Uri): vscode.FoldingRange[] | undefined => {
+          const document = vscode.workspace.textDocuments.find(
+            (candidate: vscode.TextDocument): boolean => (
+              candidate.uri.toString() === documentUri.toString()
+            ),
+          );
+          if (document === undefined) {
+            return undefined;
+          }
+          const cancellationSource = new vscode.CancellationTokenSource();
+          try {
+            return foldingProvider.provideFoldingRanges(
+              document,
+              {},
+              cancellationSource.token,
+            );
+          } finally {
+            cancellationSource.dispose();
+          }
+        },
+      ),
+    );
+  }
 
   context.subscriptions.push(...disposable_disposableId);
   controller.refresh();

@@ -18,6 +18,10 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
 
   private navigationTargetByNode = new WeakMap<HeadingNode, HeadingNavigationTarget>();
 
+  private nodeByHeadingId = new Map<string, HeadingNode>();
+
+  private parentByNode = new WeakMap<HeadingNode, HeadingNode>();
+
   public constructor(private readonly extensionUri: vscode.Uri) {}
 
   public getTreeItem(element: HeadingNode): vscode.TreeItem {
@@ -67,6 +71,18 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
       : [...element.heading_childId];
   }
 
+  public getParent(element: HeadingNode): HeadingNode | undefined {
+    return this.parentByNode.get(element);
+  }
+
+  public getNodeById(headingId: string): HeadingNode | undefined {
+    return this.nodeByHeadingId.get(headingId);
+  }
+
+  public isCurrentNode(element: HeadingNode): boolean {
+    return this.nodeByHeadingId.get(element.id) === element;
+  }
+
   /** Returns arguments built through getTreeItem for Extension Host tests. */
   public getNavigationTargetsForTesting(): readonly unknown[] {
     const target_targetId: unknown[] = [];
@@ -102,17 +118,24 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
   ): void {
     this.heading_rootId = heading_rootId;
     this.navigationTargetByNode = new WeakMap<HeadingNode, HeadingNavigationTarget>();
+    this.nodeByHeadingId = new Map<string, HeadingNode>();
+    this.parentByNode = new WeakMap<HeadingNode, HeadingNode>();
     heading_rootId.forEach((heading: HeadingNode): void => {
-      this.registerNavigationTargets(heading, modelGeneration, documentVersion);
+      this.registerNode(heading, undefined, modelGeneration, documentVersion);
     });
     this.changeTreeDataEmitter.fire();
   }
 
-  private registerNavigationTargets(
+  private registerNode(
     heading: HeadingNode,
+    parent: HeadingNode | undefined,
     modelGeneration: number,
     documentVersion: number,
   ): void {
+    this.nodeByHeadingId.set(heading.id, heading);
+    if (parent !== undefined) {
+      this.parentByNode.set(heading, parent);
+    }
     this.navigationTargetByNode.set(heading, {
       headingId: heading.id,
       documentIdentity: heading.documentIdentity,
@@ -120,7 +143,7 @@ implements vscode.TreeDataProvider<HeadingNode>, vscode.Disposable {
       modelGeneration,
     });
     heading.heading_childId.forEach((child: HeadingNode): void => {
-      this.registerNavigationTargets(child, modelGeneration, documentVersion);
+      this.registerNode(child, heading, modelGeneration, documentVersion);
     });
   }
 
