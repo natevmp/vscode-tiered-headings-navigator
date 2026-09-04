@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 
 import { DecorationManager } from "./decorationManager";
 import { HeadingController, type ActiveHeadingSnapshot } from "./headingController";
+import { HeadingFoldingProvider } from "./headingFoldingProvider";
 import { HeadingTreeProvider } from "./headingTreeProvider";
 import type { HeadingNavigationTarget } from "./model";
 import { affectsHeadingSettings } from "./settings";
@@ -22,6 +23,11 @@ export function activate(context: vscode.ExtensionContext): void {
     decorationManager,
     outputChannel,
   );
+  const foldingProvider = new HeadingFoldingProvider();
+  const foldingRegistration = vscode.languages.registerFoldingRangeProvider(
+    "*",
+    foldingProvider,
+  );
 
   const disposable_disposableId: vscode.Disposable[] = [
     provider,
@@ -29,6 +35,8 @@ export function activate(context: vscode.ExtensionContext): void {
     decorationManager,
     outputChannel,
     controller,
+    foldingProvider,
+    foldingRegistration,
     vscode.commands.registerCommand(
       "tieredHeadings.openSettings",
       async (): Promise<void> => {
@@ -42,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "tieredHeadings.refresh",
       (): void => {
         controller.refresh();
+        foldingProvider.refresh();
       },
     ),
     vscode.commands.registerCommand(
@@ -73,6 +82,29 @@ export function activate(context: vscode.ExtensionContext): void {
       "_tieredHeadings.getTreeItems",
       (): readonly vscode.TreeItem[] => provider.getTreeItemsForTesting(),
     ),
+    vscode.commands.registerCommand(
+      "_tieredHeadings.getFoldingRanges",
+      (documentUri: vscode.Uri): vscode.FoldingRange[] | undefined => {
+        const document = vscode.workspace.textDocuments.find(
+          (candidate: vscode.TextDocument): boolean => (
+            candidate.uri.toString() === documentUri.toString()
+          ),
+        );
+        if (document === undefined) {
+          return undefined;
+        }
+        const cancellationSource = new vscode.CancellationTokenSource();
+        try {
+          return foldingProvider.provideFoldingRanges(
+            document,
+            {},
+            cancellationSource.token,
+          );
+        } finally {
+          cancellationSource.dispose();
+        }
+      },
+    ),
     vscode.window.onDidChangeActiveTextEditor((): void => {
       controller.refresh();
     }),
@@ -90,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!affectsHeadingSettings(event)) {
           return;
         }
+        foldingProvider.refresh();
         controller.resetConfigurationIssueNotifications();
         if (
           activeEditor !== undefined

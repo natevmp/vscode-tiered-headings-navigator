@@ -1,11 +1,11 @@
 # Tiered Headings Navigator — Product Specification
 
-**Status:** Draft v0.3
+**Status:** Draft v0.4
 **Product type:** Visual Studio Code desktop extension
 
 ## Summary
 
-Tiered Headings Navigator detects user-defined heading snippets embedded in text documents and displays the resulting headings as a collapsible hierarchy in a new Explorer view.
+Tiered Headings Navigator detects user-defined heading snippets embedded in text documents, displays the resulting headings as a collapsible hierarchy in a new Explorer view, and supplies matching native editor folding ranges.
 
 The view follows the active text editor. Selecting a heading navigates to its source line. Heading levels behave like Markdown heading levels, with smaller integers representing higher-level headings.
 
@@ -35,6 +35,7 @@ The first release shall:
 11. Apply configurable bold and italic whole-line styles by heading level.
 12. Support optional literal, per-trigger label delimiters.
 13. Present heading levels with quiet, similarly scaled shape icons.
+14. Provide native editor folding sections derived from heading hierarchy.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -66,6 +67,7 @@ Proposed configuration:
   ],
   "tieredHeadings.caseSensitive": true,
   "tieredHeadings.gutter.enabled": true,
+  "tieredHeadings.folding.enabled": true,
   "tieredHeadings.editor.levelStyles": [
     { "level": 1, "style": "bold" },
     { "level": 2, "style": "boldItalic" },
@@ -157,6 +159,31 @@ Thus:
 - F is the direct parent of G and an ancestor of H.
 - G is the direct parent of H.
 
+## Editor folding
+
+- Native editor folding is enabled by default and can be disabled per resource
+  with `tieredHeadings.folding.enabled`.
+- Disabling folding stops future provider contribution. VS Code may preserve an
+  already-collapsed range as recovered editor state; unfolding reveals its
+  content, but the stable API cannot selectively remove that range without
+  risking unrelated folds.
+- Folding ranges are available for every open configured text document rather
+  than only the editor currently followed by the Explorer view.
+- The heading line is the visible start of its range.
+- A heading's range ends on the line before the next heading with the same or a
+  lower numeric level, or on the document's final line when no such heading
+  follows.
+- Deeper headings do not close ancestor ranges and may provide nested folds.
+- A range is omitted when the heading has no following physical line to hide.
+- Heading folds are ordinary structural ranges, not marker regions; they work
+  with normal folding commands but are not specifically targeted by **Fold All
+  Regions**.
+- The extension does not insert markers, modify source text, automatically
+  collapse sections, or persist collapsed state.
+- VS Code owns range merging and collapsed-state reconciliation. A language
+  provider that begins a fold on the same line can take precedence, and an
+  indentation-only folding strategy can suppress provider-based ranges.
+
 ## Explorer view
 
 - The view is named **Headings** and appears in Explorer.
@@ -195,6 +222,7 @@ Thus:
 - Commands that insert or edit headings.
 - Next/previous heading commands.
 - Cursor-following selection in the tree.
+- Automatic folding or extension-managed persistence of collapsed state.
 - Outline, breadcrumb, or Document Symbol integration.
 - Per-tier font sizes or arbitrary CSS.
 - Language-aware comment detection.
@@ -212,12 +240,25 @@ Thus:
 - Invalid configuration reports an actionable warning without disabling valid triggers.
 - Exact, non-overlapping delimiter pairs extract `${after}` atomically; incomplete pairs preserve the original after text without runtime warnings.
 - Documents without headings show appropriate welcome content.
+- Folding a heading keeps that heading visible and hides content through the
+  line before the next same-level or ancestor-level heading.
+- Nested headings produce nested, non-crossing ranges, and headings without a
+  following line do not produce useless ranges.
+- Folding updates from unsaved edits and is available in multiple open
+  configured documents.
+- Disabling `tieredHeadings.folding.enabled` stops custom range contribution
+  without disabling navigation, styling, or gutter markers; already-collapsed
+  recovered editor state follows VS Code's documented platform behavior.
 
 ## Technical direction
 
 - Implement the extension independently rather than copying code or assets from Inline Bookmarks, which is GPLv3-licensed.
 - Use strict TypeScript, the native VS Code Tree View API, and a desktop Node extension bundle.
+- Require VS Code 1.75 or newer so a folding provider can abstain without
+  suppressing the editor's indentation-based fallback ranges.
 - Keep scanning, label formatting, and hierarchy construction independent from the VS Code API so they can be unit tested.
+- Keep folding-boundary calculation independent from the VS Code API and reuse
+  the validated trigger scanner as its source of headings.
 - Use full-document line scans after a short debounce. Incremental parsing is deferred until profiling demonstrates a need.
 - Treat source text as authoritative; do not persist a heading cache.
 - Do not collect telemetry or make network requests.

@@ -9,7 +9,7 @@ npm run package
 ```
 
 `npm run verify` runs Extension Host tests against the current VS Code release
-and the declared minimum, VS Code 1.74. The runners download isolated copies on
+and the declared minimum, VS Code 1.75. The runners download isolated copies on
 their first use. Packaging also runs the complete verification suite.
 
 ## Manual Extension Development Host test
@@ -30,6 +30,18 @@ their first use. Packaging also runs the complete verification suite.
 14. Open `hierarchy-demo.txt` and compare the tree with the expected hierarchy below.
 15. Now confirm all four gutter and pane shapes at a similar visual scale: filled circle/`circle-filled` for level 1, open circle/`circle-outline` for level 2, compact plus for level 3, and dash/`dash` for level 4 and higher.
 16. Switch between light and dark themes. Confirm all four gutter shapes remain similarly scaled, subtle, and visible, and the native pane symbols remain theme-compatible.
+17. Open `folding-demo.txt` and hover over the editor gutter. Confirm native fold
+    controls appear for headings that contain at least one following line.
+18. Fold **Alpha** and confirm its heading remains visible while everything
+    through the line before **Epsilon** is hidden. Unfold it and confirm **Beta**,
+    **Gamma**, and **Delta** provide correctly nested or adjacent folds.
+19. Edit a heading level without saving and confirm the fold boundaries update.
+20. Open `sample.txt` beside `folding-demo.txt` and confirm both editors retain
+    heading-derived folding ranges regardless of which editor is active.
+21. Run normal **Fold All** and confirm heading folds participate. Confirm **Fold
+    All Regions** does not specifically treat these headings as marker regions.
+22. Open `indented-no-headings.txt` and confirm its ordinary indentation-based
+    folds remain available even though no configured heading occurs in it.
 
 Expected hierarchy for `hierarchy-demo.txt`:
 
@@ -90,3 +102,13 @@ disappears while gutter markers and navigation continue working. Disable
 `tieredHeadings.gutter.enabled` and confirm all four gutter marker types disappear
 while configured text styling remains. Then configure an arbitrary higher level
 and confirm its dash marker and selected text style apply immediately.
+
+Set `tieredHeadings.folding.enabled` to `false` for the workspace and confirm the
+extension stops supplying new custom ranges without affecting the pane, gutter
+markers, styles, or navigation. An already-collapsed range may remain as VS
+Code-recovered editor state; manually unfolding it reveals the content, although
+the recovered fold control may remain. Restore the setting to `true`. If controls
+do not appear, confirm VS Code's `editor.folding` is enabled,
+`editor.showFoldingControls` is not `never`, and `editor.foldingStrategy` is
+`auto`. Also sample a language with its own folding provider and confirm any
+same-line precedence is acceptable.

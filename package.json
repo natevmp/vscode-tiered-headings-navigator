@@ -1,8 +1,8 @@
 {
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
-  "description": "Navigate user-defined, tiered inline headings in the active document.",
-  "version": "0.0.3",
+  "description": "Navigate and fold user-defined, tiered inline headings in text documents.",
+  "version": "0.0.4",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -11,7 +11,7 @@
     "url": "https://github.com/natevmp/vscode-tiered-headings-navigator.git"
   },
   "engines": {
-    "vscode": "^1.74.0",
+    "vscode": "^1.75.0",
     "node": ">=22"
   },
   "categories": [
@@ -149,6 +149,12 @@
           "default": true,
           "description": "Show a gutter marker beside detected heading lines."
         },
+        "tieredHeadings.folding.enabled": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "Provide native editor folding ranges for detected headings."
+        },
         "tieredHeadings.editor.levelStyles": {
           "type": "array",
           "scope": "resource",
@@ -216,7 +222,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.3.0",
-    "@types/vscode": "1.74.0",
+    "@types/vscode": "1.75.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",

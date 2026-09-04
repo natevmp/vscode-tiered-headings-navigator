@@ -31,13 +31,26 @@ const inspectCommand = "_tieredHeadings.getActiveSnapshot";
 const inspectTargetsCommand = "_tieredHeadings.getTreeNavigationTargets";
 const inspectViewVisibleCommand = "_tieredHeadings.isViewVisible";
 const inspectTreeItemsCommand = "_tieredHeadings.getTreeItems";
+const inspectFoldingRangesCommand = "_tieredHeadings.getFoldingRanges";
 
 async function openSampleDocument(): Promise<vscode.TextEditor> {
+  return openFixtureDocument("sample.txt");
+}
+
+async function openFoldingDemoDocument(): Promise<vscode.TextEditor> {
+  return openFixtureDocument("folding-demo.txt");
+}
+
+async function openIndentedDocument(): Promise<vscode.TextEditor> {
+  return openFixtureDocument("indented-no-headings.txt");
+}
+
+async function openFixtureDocument(fixtureName: string): Promise<vscode.TextEditor> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (workspaceFolder === undefined) {
     throw new Error("The integration workspace must be open.");
   }
-  const documentUri = vscode.Uri.joinPath(workspaceFolder.uri, "sample.txt");
+  const documentUri = vscode.Uri.joinPath(workspaceFolder.uri, fixtureName);
   const diskText = Buffer.from(await vscode.workspace.fs.readFile(documentUri)).toString(
     "utf8",
   );
@@ -48,7 +61,7 @@ async function openSampleDocument(): Promise<vscode.TextEditor> {
     await waitForDocumentReset(document, diskText);
   }
   if (document.isDirty || document.getText() !== diskText) {
-    throw new Error("sample.txt could not be restored from its on-disk fixture.");
+    throw new Error(`${fixtureName} could not be restored from its on-disk fixture.`);
   }
   return editor;
 }
@@ -60,6 +73,7 @@ async function waitForDocumentReset(
   if (!document.isDirty && document.getText() === diskText) {
     return;
   }
+  const documentIdentity = document.uri.toString();
   await new Promise<void>((resolve, reject): void => {
     const changeDisposable = vscode.workspace.onDidChangeTextDocument(
       (event: vscode.TextDocumentChangeEvent): void => {
@@ -71,12 +85,16 @@ async function waitForDocumentReset(
     const closeDisposable = vscode.workspace.onDidCloseTextDocument(
       (closedDocument: vscode.TextDocument): void => {
         if (closedDocument === document) {
-          finish(new Error("sample.txt closed before its fixture reset completed."));
+          finish(new Error(
+            `${documentIdentity} closed before its fixture reset completed.`,
+          ));
         }
       },
     );
     const timeout = setTimeout((): void => {
-      finish(new Error("sample.txt fixture reset did not complete before the timeout."));
+      finish(new Error(
+        `${documentIdentity} fixture reset did not complete before the timeout.`,
+      ));
     }, 3000);
     function finish(error?: Error): void {
       changeDisposable.dispose();
@@ -179,6 +197,80 @@ async function waitForViewVisibility(expectedVisibility: boolean): Promise<void>
   );
 }
 
+type FoldingLineRange = readonly [startLine: number, endLine: number];
+const foldingRangeCommand = "vscode.executeFoldingRangeProvider";
+let foldingRangeCommandAvailable: boolean | undefined;
+
+async function readFoldingRanges(
+  document: vscode.TextDocument,
+): Promise<readonly vscode.FoldingRange[]> {
+  const publicCommandAvailable = await foldingRangeCommandIsAvailable();
+  if (!publicCommandAvailable && !/^1\.75\./.test(vscode.version)) {
+    throw new Error(
+      `${foldingRangeCommand} is unexpectedly unavailable in VS Code ${vscode.version}.`,
+    );
+  }
+  const command = publicCommandAvailable
+    ? foldingRangeCommand
+    : inspectFoldingRangesCommand;
+  return await vscode.commands.executeCommand<vscode.FoldingRange[] | undefined>(
+    command,
+    document.uri,
+  ) ?? [];
+}
+
+async function readCustomFoldingRanges(
+  document: vscode.TextDocument,
+): Promise<readonly vscode.FoldingRange[] | undefined> {
+  return vscode.commands.executeCommand<vscode.FoldingRange[] | undefined>(
+    inspectFoldingRangesCommand,
+    document.uri,
+  );
+}
+
+async function foldingRangeCommandIsAvailable(): Promise<boolean> {
+  if (foldingRangeCommandAvailable !== undefined) {
+    return foldingRangeCommandAvailable;
+  }
+  const document = vscode.window.activeTextEditor?.document;
+  if (document === undefined) {
+    throw new Error("An active document is required to probe the folding provider command.");
+  }
+  try {
+    await vscode.commands.executeCommand(foldingRangeCommand, document.uri);
+    foldingRangeCommandAvailable = true;
+  } catch (error) {
+    if (!String(error).includes(`command '${foldingRangeCommand}' not found`)) {
+      throw error;
+    }
+    foldingRangeCommandAvailable = false;
+  }
+  return foldingRangeCommandAvailable;
+}
+
+function assertFoldingRanges(
+  foldingRange_rangeId: readonly vscode.FoldingRange[],
+  expectedRange_rangeId: readonly FoldingLineRange[],
+): void {
+  assert.deepEqual(
+    foldingRange_rangeId.map((range): FoldingLineRange => [range.start, range.end]),
+    expectedRange_rangeId,
+  );
+  foldingRange_rangeId.forEach((range: vscode.FoldingRange): void => {
+    assert.equal(range.kind, undefined);
+  });
+}
+
+function expectedFoldingDemoRanges(document: vscode.TextDocument): FoldingLineRange[] {
+  return [
+    [0, 9],
+    [2, 6],
+    [4, 6],
+    [7, 9],
+    [10, document.lineCount - 1],
+  ];
+}
+
 suite("Tiered Headings extension", (): void => {
   suiteSetup(async (): Promise<void> => {
     await openSampleDocument();
@@ -217,6 +309,129 @@ suite("Tiered Headings extension", (): void => {
       ],
     );
   });
+
+  test("provides native plaintext folding ranges by default", async (): Promise<void> => {
+    const { document } = await openFoldingDemoDocument();
+    assert.equal(
+      vscode.workspace.getConfiguration("tieredHeadings", document.uri).get(
+        "folding.enabled",
+      ),
+      true,
+    );
+
+    assertFoldingRanges(
+      await readFoldingRanges(document),
+      expectedFoldingDemoRanges(document),
+    );
+  });
+
+  test(
+    "disables and re-enables native folding through resource settings",
+    async (): Promise<void> => {
+      const { document } = await openFoldingDemoDocument();
+      const configuration = vscode.workspace.getConfiguration(
+        "tieredHeadings",
+        document.uri,
+      );
+      const previousValue = configuration.inspect<boolean>(
+        "folding.enabled",
+      )?.workspaceFolderValue;
+
+      try {
+        await configuration.update(
+          "folding.enabled",
+          false,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+        assert.equal(await readCustomFoldingRanges(document), undefined);
+        if (await foldingRangeCommandIsAvailable()) {
+          assert.deepEqual(await readFoldingRanges(document), []);
+        }
+
+        await configuration.update(
+          "folding.enabled",
+          true,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+        assertFoldingRanges(
+          await readFoldingRanges(document),
+          expectedFoldingDemoRanges(document),
+        );
+      } finally {
+        await configuration.update(
+          "folding.enabled",
+          previousValue,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+      }
+    },
+  );
+
+  test("preserves native indentation fallback when no custom range exists", async (): Promise<void> => {
+    const { document } = await openIndentedDocument();
+
+    assert.equal(await readCustomFoldingRanges(document), undefined);
+    if (await foldingRangeCommandIsAvailable()) {
+      assertFoldingRanges(await readFoldingRanges(document), [
+        [0, 3],
+        [1, 2],
+      ]);
+    } else {
+      assert.match(vscode.version, /^1\.75\./);
+    }
+  });
+
+  test("updates folding ranges from unsaved document text", async (): Promise<void> => {
+    const editor = await openFoldingDemoDocument();
+    const { document } = editor;
+    const addedHeadingLine = document.lineCount;
+    const originalRange_rangeId = expectedFoldingDemoRanges(document);
+
+    try {
+      const inserted = await editor.edit((builder): void => {
+        builder.insert(
+          document.positionAt(document.getText().length),
+          "\n// @h1 Zeta\nZeta body.",
+        );
+      });
+      assert.equal(inserted, true);
+      assert.equal(document.isDirty, true);
+
+      assertFoldingRanges(await readFoldingRanges(document), [
+        ...originalRange_rangeId,
+        [addedHeadingLine, document.lineCount - 1],
+      ]);
+    } finally {
+      await openFoldingDemoDocument();
+    }
+  });
+
+  test(
+    "provides folding ranges for multiple open plaintext documents",
+    async (): Promise<void> => {
+      const foldingDocument = (await openFoldingDemoDocument()).document;
+      const sampleDocument = (await openSampleDocument()).document;
+      assert.notEqual(vscode.window.activeTextEditor?.document, foldingDocument);
+
+      assertFoldingRanges(
+        await readFoldingRanges(foldingDocument),
+        expectedFoldingDemoRanges(foldingDocument),
+      );
+
+      const sampleEndLine = sampleDocument.lineCount - 1;
+      const expectedSampleRange_rangeId: FoldingLineRange[] = [
+        [0, sampleEndLine],
+        [2, sampleEndLine],
+      ];
+      if (sampleEndLine > 4) {
+        expectedSampleRange_rangeId.push([4, sampleEndLine]);
+      }
+      assertFoldingRanges(
+        await readFoldingRanges(sampleDocument),
+        expectedSampleRange_rangeId,
+      );
+    },
+  );
 
   test("shows and focuses the Headings view", async (): Promise<void> => {
     await vscode.commands.executeCommand("tieredHeadings.showHeadings");
@@ -259,17 +474,17 @@ suite("Tiered Headings extension", (): void => {
       ["B", {
         icon: { kind: "theme", iconId: "circle-outline" },
         level: 2,
-        lineNumber: 2,
+        lineNumber: 5,
       }],
       ["E", {
         icon: { kind: "asset", assetName: "marker-plus.svg" },
         level: 3,
-        lineNumber: 5,
+        lineNumber: 17,
       }],
       ["H", {
         icon: { kind: "theme", iconId: "dash" },
         level: 4,
-        lineNumber: 8,
+        lineNumber: 29,
       }],
     ]);
 

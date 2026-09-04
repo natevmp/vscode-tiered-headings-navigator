@@ -10,7 +10,7 @@ module.exports = defineConfig([
   {
     label: 'minimum',
     files: 'out/test/integration/**/*.test.js',
-    version: '1.74.0',
+    version: '1.75.0',
     workspaceFolder: './test/fixtures/workspace',
     launchArgs: [
       '--disable-extensions',

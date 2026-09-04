@@ -10,6 +10,7 @@ Tiered Headings Navigator is a local-first Visual Studio Code extension that tur
 - Expand and collapse nested headings.
 - Click a heading to reveal its trigger in the editor.
 - Update the tree from unsaved edits.
+- Fold each heading's editor section with native VS Code folding controls.
 - Show the corresponding level symbol in the editor gutter.
 - Style complete heading lines by level, with configurable bold and italic defaults.
 - Keep all processing local, with no telemetry or network access.
@@ -120,12 +121,36 @@ with custom light/dark SVGs on a consistent 16-pixel grid. Each row shows only
 `line N` as its description. Its accessibility label also states the heading
 label, level, and line number.
 
+### Editor folding
+
+Native editor folding is enabled by default for detected headings in every open
+configured text document, including documents shown side by side. A heading line
+stays visible when folded. Its hidden section continues through the line before
+the next heading of the same or a lower numeric level, or through the end of the
+document. Deeper headings remain inside their ancestor's section and provide
+their own nested folds when they contain at least one following line.
+
+The extension supplies ordinary structural folding ranges. It does not insert
+region markers, collapse sections automatically, persist fold state, or classify
+headings for **Fold All Regions**. Set `tieredHeadings.folding.enabled` to `false`
+to stop supplying custom ranges for a resource. VS Code can retain an
+already-collapsed range as a recovered fold after the setting is disabled;
+manually unfold it to reveal the content. VS Code controls whether the recovered
+fold control remains afterward.
+
+VS Code merges these ranges with folding supplied by the document's language.
+If another provider starts a fold on the same line, that provider can take
+precedence. Folding also depends on VS Code's `editor.folding`,
+`editor.showFoldingControls`, and `editor.foldingStrategy` settings; use the
+default `auto` strategy to allow provider-based ranges.
+
 ### Other settings
 
 ```json
 {
   "tieredHeadings.caseSensitive": true,
   "tieredHeadings.gutter.enabled": true,
+  "tieredHeadings.folding.enabled": true,
   "tieredHeadings.editor.levelStyles": [
     { "level": 1, "style": "bold" },
     { "level": 2, "style": "boldItalic" },
@@ -145,7 +170,7 @@ changes.
 Requirements:
 
 - Node.js 22 or newer
-- VS Code desktop
+- VS Code 1.75 or newer (desktop)
 
 Install and build:
 
@@ -155,7 +180,8 @@ npm run compile
 ```
 
 Press **F5** in VS Code to open an Extension Development Host with the sample workspace.
-Open `sample.txt` or `hierarchy-demo.txt`, then expand **Headings** in Explorer.
+Open `sample.txt`, `hierarchy-demo.txt`, or `folding-demo.txt`, then expand
+**Headings** in Explorer.
 
 Useful commands:
 
@@ -174,7 +200,10 @@ See `TESTING.md` for a short manual test checklist.
 
 ## Current scope
 
-The initial release follows only the active text document. Workspace-wide indexing, browser-based VS Code, regex triggers, and Marketplace publication are deliberately deferred.
+The navigator follows only the active text document, while native folding is
+available in every open configured text document. Workspace-wide indexing,
+browser-based VS Code, regex triggers, and Marketplace publication are
+deliberately deferred.
 
 ## Development disclosure
 
@@ -188,8 +217,7 @@ on it, and report problems through the repository's issue tracker.
 The extension was inspired by tintinweb's
 [Inline Bookmarks](https://github.com/tintinweb/vscode-inline-bookmarks)
 extension. It was implemented independently, and Inline Bookmarks was used only
-as a functional reference. To the maintainer's knowledge, no code or assets
-were copied from it.
+as a functional reference.
 
 ## License
 
