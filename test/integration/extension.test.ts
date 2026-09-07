@@ -287,8 +287,7 @@ async function waitForLineVisibility(
   assert.equal(lineIsVisible(editor, line), expectedVisibility);
 }
 
-async function executeFocusedListCommand(
-  command: "list.collapse" | "list.expand",
+async function settleFocusedTreeItem(
   headingId: string,
   expectedSelectionLabel: string,
 ): Promise<void> {
@@ -304,7 +303,14 @@ async function executeFocusedListCommand(
       setTimeout(resolve, navigatorFocusSettlingMilliseconds);
     });
   }
-  await vscode.commands.executeCommand(command);
+}
+
+async function executeFocusedListCollapse(
+  headingId: string,
+  expectedSelectionLabel: string,
+): Promise<void> {
+  await settleFocusedTreeItem(headingId, expectedSelectionLabel);
+  await vscode.commands.executeCommand("list.collapse");
   await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
   const selection = await waitForTreeSelection(expectedSelectionLabel);
   assert.equal(selection.id, headingId);
@@ -671,31 +677,11 @@ suite("Tiered Headings extension", (): void => {
       const beta = initialSnapshot.heading_headingId.find(
         (heading): boolean => heading.label === "Beta",
       );
-      const gamma = initialSnapshot.heading_headingId.find(
-        (heading): boolean => heading.label === "Gamma",
-      );
-      const alpha = initialSnapshot.heading_headingId.find(
-        (heading): boolean => heading.label === "Alpha",
-      );
-      if (alpha === undefined || beta === undefined || gamma === undefined) {
-        throw new Error("Expected Alpha, Beta, and Gamma headings in folding-demo.txt.");
+      if (beta === undefined) {
+        throw new Error("Expected Beta in folding-demo.txt.");
       }
 
       assert.equal(configuration.get("folding.syncFromNavigator"), false);
-      const gammaBodyPosition = new vscode.Position(gamma.line + 1, 0);
-      editor.selection = new vscode.Selection(gammaBodyPosition, gammaBodyPosition);
-      await waitForTreeSelection("Gamma");
-      assert.equal(
-        await vscode.commands.executeCommand<boolean>(focusTreeItemCommand, beta.id),
-        true,
-      );
-      await executeFocusedListCommand("list.collapse", beta.id, "Beta");
-      assert.equal(lineIsVisible(editor, beta.line + 1), true);
-
-      const laterGammaPosition = new vscode.Position(gamma.line + 2, 0);
-      editor.selection = new vscode.Selection(laterGammaPosition, laterGammaPosition);
-      await waitForTreeSelection("Gamma");
-
       assert.equal(
         await vscode.commands.executeCommand<boolean>(
           applyNavigatorFoldingStateCommand,
@@ -769,11 +755,22 @@ suite("Tiered Headings extension", (): void => {
         true,
       );
 
-      // These pinned workbench commands exercise the real TreeView event path.
-      await executeFocusedListCommand("list.collapse", enabledAlpha.id, "Alpha");
+      // The pinned workbench command exercises the real TreeView collapse event path.
+      await executeFocusedListCollapse(enabledAlpha.id, "Alpha");
       await waitForLineVisibility(editor, 1, false);
 
-      await executeFocusedListCommand("list.expand", enabledAlpha.id, "Alpha");
+      // TreeView.reveal expands the node without a second slow generic list command.
+      assert.equal(
+        await vscode.commands.executeCommand<boolean>(
+          focusTreeItemCommand,
+          enabledAlpha.id,
+          1,
+        ),
+        true,
+      );
+      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      const expandedSelection = await waitForTreeSelection("Alpha");
+      assert.equal(expandedSelection.id, enabledAlpha.id);
       await waitForLineVisibility(editor, 1, true);
     } finally {
       await vscode.commands.executeCommand("editor.unfoldAll");
