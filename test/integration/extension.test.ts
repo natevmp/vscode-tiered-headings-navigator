@@ -53,6 +53,10 @@ async function openFoldingDemoDocument(): Promise<vscode.TextEditor> {
   return openFixtureDocument("folding-demo.txt");
 }
 
+async function openRegexLabelDocument(): Promise<vscode.TextEditor> {
+  return openFixtureDocument("regex-label.txt");
+}
+
 async function openIndentedDocument(): Promise<vscode.TextEditor> {
   return openFixtureDocument("indented-no-headings.txt");
 }
@@ -419,6 +423,21 @@ suite("Tiered Headings extension", (): void => {
         ["Details", 3, 4],
       ],
     );
+  });
+
+  test("applies a configured label regex in the active tree snapshot", async (): Promise<void> => {
+    assert.equal(vscode.workspace.isTrusted, true, "the integration workspace must be trusted");
+    await openRegexLabelDocument();
+    await vscode.commands.executeCommand("tieredHeadings.refresh");
+
+    const { heading_headingId } = await waitForHeadingCount(1);
+    assert.equal(heading_headingId[0]?.label, "This is the title");
+    assert.equal(heading_headingId[0]?.line, 0);
+    assert.equal(heading_headingId[0]?.startCharacter, 3);
+    assert.equal(heading_headingId[0]?.endCharacter, 6);
+
+    await openSampleDocument();
+    await waitForHeadingCount(3);
   });
 
   test("provides native plaintext folding ranges by default", async (): Promise<void> => {

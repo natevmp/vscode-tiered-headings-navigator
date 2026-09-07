@@ -93,6 +93,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidCloseTextDocument((document: vscode.TextDocument): void => {
       controller.forgetDocument(document);
     }),
+    vscode.workspace.onDidGrantWorkspaceTrust((): void => {
+      controller.resetConfigurationIssueNotifications();
+      controller.refresh();
+      foldingProvider.refresh();
+    }),
     vscode.workspace.onDidChangeConfiguration(
       (event: vscode.ConfigurationChangeEvent): void => {
         const activeEditor = vscode.window.activeTextEditor;

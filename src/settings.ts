@@ -76,7 +76,11 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
     "tieredHeadings.folding.syncFromNavigator",
   );
   const rawTriggers = configuration.get<unknown>("triggers", []);
-  const triggerResult = parseTriggerDefinitions(rawTriggers, caseSensitiveResult.value);
+  const triggerResult = parseTriggerDefinitions(
+    rawTriggers,
+    caseSensitiveResult.value,
+    vscode.workspace.isTrusted,
+  );
   const rawLevelStyles = configuration.get<unknown>(
     "editor.levelStyles",
     defaultLevelStyle_level,

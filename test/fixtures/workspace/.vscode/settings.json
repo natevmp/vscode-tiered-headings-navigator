@@ -3,7 +3,11 @@
     {
       "snippet": "@h1",
       "level": 1,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelRegex": {
+        "pattern": "\\s+-+\\s*$",
+        "replacement": ""
+      }
     },
     {
       "snippet": "@h2",

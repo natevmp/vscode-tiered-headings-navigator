@@ -4,6 +4,7 @@ import {
   extractDelimitedAfter,
   findUnsupportedPlaceholder,
   formatHeadingLabel,
+  replaceLabelAfter,
 } from "../../src/template";
 
 describe("heading label templates", (): void => {
@@ -39,6 +40,46 @@ describe("heading label templates", (): void => {
     );
     assert.equal(
       formatHeadingLabel("", context),
+      "Untitled heading (line 12)",
+    );
+  });
+
+  it("removes arbitrary trailing dash counts with one regex replacement", (): void => {
+    const expression = /\s*-+\s*$/u;
+
+    assert.equal(
+      replaceLabelAfter(" This is the title -", expression, ""),
+      " This is the title",
+    );
+    assert.equal(
+      replaceLabelAfter(" This is the title -----------------  ", expression, ""),
+      " This is the title",
+    );
+  });
+
+  it("inherits JavaScript capture replacement behavior", (): void => {
+    assert.equal(
+      replaceLabelAfter(" [Chapter 12] ", /\[(Chapter) (\d+)\]/u, "$1-$2"),
+      " Chapter-12 ",
+    );
+    assert.equal(
+      replaceLabelAfter(" <Named> ", /<(?<title>[^>]+)>/u, "$<title>"),
+      " Named ",
+    );
+  });
+
+  it("leaves non-matching after-text unchanged", (): void => {
+    const after = " This title has no suffix ";
+
+    assert.equal(replaceLabelAfter(after, /\s*-+\s*$/u, ""), after);
+  });
+
+  it("lets an empty replacement result flow to the existing fallback", (): void => {
+    const after = replaceLabelAfter(" --- ", /^\s*-+\s*$/u, "");
+
+    assert.equal(after, "");
+    assert.equal(
+      formatHeadingLabel("${after}", { ...context, after }),
       "Untitled heading (line 12)",
     );
   });

@@ -5,6 +5,7 @@ Tiered Headings Navigator is a local-first Visual Studio Code extension that tur
 ## Features
 
 - Define literal trigger snippets for heading levels 1, 2, 3, and beyond.
+- Optionally transform navigation labels with per-trigger regular expressions.
 - Display headings in a native **Headings** view in Explorer.
 - Distinguish levels with quiet, similarly scaled symbols and show `line N` beside each label.
 - Expand and collapse nested headings.
@@ -109,6 +110,45 @@ without a runtime warning. A malformed delimiter configuration reports a
 configuration warning but leaves the trigger active with delimiter extraction
 disabled.
 
+### Regex label replacements
+
+Optional `labelRegex` applies one case-sensitive Unicode JavaScript regular-
+expression replacement to the raw text after a matched trigger, before
+`labelTemplate` is evaluated. For example:
+
+```json
+{
+  "snippet": "@h1",
+  "level": 1,
+  "labelTemplate": "${after}",
+  "labelRegex": {
+    "pattern": "\\s+-+\\s*$",
+    "replacement": ""
+  }
+}
+```
+
+With this definition, `## @h1 This is the title -----------------` appears as
+**This is the title**. The `-+` quantifier accepts any positive number of
+trailing dashes. Backslashes are doubled because the expression is stored in
+JSON.
+
+Replacement text uses JavaScript replacement syntax, including `$1` and
+`$<name>` capture references. If the expression does not match, the original
+text after the trigger is retained, which keeps labels usable while a line is
+being typed. Invalid expressions produce a configuration warning but leave the
+literal trigger active without the transformation.
+
+`labelRegex` and `labelDelimiters` cannot be combined on one trigger. If both
+are present, the existing delimiter behavior is retained and `labelRegex` is
+ignored. Regex label replacements are disabled in VS Code Restricted Mode and
+activate after the workspace is trusted. Trigger detection itself remains
+literal.
+
+Label expressions execute synchronously in trusted workspaces. Prefer anchored,
+specific patterns and avoid ambiguous nested quantifiers, which can make a
+JavaScript regular expression take a long time to evaluate.
+
 ### Label templates
 
 Each trigger's `labelTemplate` can contain:
@@ -122,8 +162,8 @@ Each trigger's `labelTemplate` can contain:
 | `${lineNumber}` | One-based line number |
 
 The default template is `${after}`. Empty labels are shown as `Untitled heading (line N)`.
-Delimiter extraction changes only `${after}`; `${line}` and `${before}` retain
-their raw source text.
+Delimiter extraction and regex replacement change only `${after}`; `${line}`
+and `${before}` retain their raw source text.
 
 ### Explorer presentation
 
@@ -227,8 +267,9 @@ See `TESTING.md` for a short manual test checklist.
 
 The navigator follows only the active text document, while native folding is
 available in every open configured text document. Workspace-wide indexing,
-browser-based VS Code, regex triggers, and Marketplace publication are
-deliberately deferred.
+browser-based VS Code, regex trigger matching, and Marketplace publication are
+deliberately deferred. Label-only regex replacements do not make trigger
+matching regex-based.
 
 ## Development disclosure
 

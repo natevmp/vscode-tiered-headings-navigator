@@ -1,6 +1,6 @@
 # Tiered Headings Navigator — Product Specification
 
-**Status:** Draft v0.5
+**Status:** Draft v0.6
 **Product type:** Visual Studio Code desktop extension
 
 ## Summary
@@ -13,6 +13,7 @@ The view follows the active text editor and selects the heading section containi
 
 - **Trigger snippet:** A user-defined literal string associated with a positive integer level.
 - **Label delimiters:** Optional exact start and end strings used to extract `${after}` for one trigger.
+- **Label regex:** An optional case-sensitive Unicode regular-expression replacement applied to `${after}` for one trigger.
 - **Heading:** A detected occurrence of a trigger snippet and its source location.
 - **Parent:** The nearest preceding heading with a lower numeric level that remains open.
 - **Ancestor:** Any parent, parent's parent, and so forth.
@@ -39,6 +40,8 @@ The first release shall:
 15. Select and reveal the current heading as the primary editor cursor moves.
 16. Optionally synchronize parent-heading collapse and expand actions from the
     Explorer view to editor folding.
+17. Support optional per-trigger regex replacements for navigation labels in
+    trusted workspaces.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -66,6 +69,15 @@ Proposed configuration:
       "level": 3,
       "labelTemplate": "Part: ${after}",
       "labelDelimiters": { "start": "<", "end": ">>" }
+    },
+    {
+      "snippet": "@h4",
+      "level": 4,
+      "labelTemplate": "${after}",
+      "labelRegex": {
+        "pattern": "\\s+-+\\s*$",
+        "replacement": ""
+      }
     }
   ],
   "tieredHeadings.caseSensitive": true,
@@ -100,7 +112,22 @@ warning. `${before}` and `${line}` remain raw. Delimiter case sensitivity is
 independent of trigger case sensitivity, and each trigger may use different,
 including asymmetric, delimiters.
 
-Invalid definitions must not crash the extension. Valid definitions continue working, while a concise warning identifies the invalid setting. Malformed `labelDelimiters` reports actionable configuration issues but does not discard an otherwise valid trigger; that trigger instead operates without delimiter extraction.
+Alternatively, a trigger may define `labelRegex.pattern` and
+`labelRegex.replacement`. The pattern is a non-empty, single-line JavaScript
+regular-expression source compiled with case-sensitive Unicode semantics and
+applied once to raw text after the trigger. Replacement uses JavaScript
+replacement syntax. The transformed value is supplied as `${after}` before the
+label template is formatted; all other placeholders remain raw. A non-match
+preserves the original after text without a runtime warning, and an empty result
+uses the normal line-numbered fallback.
+
+`labelRegex` and `labelDelimiters` are mutually exclusive. If both are present,
+the literal delimiters retain precedence and a configuration issue is reported.
+Regex label transformations are disabled while VS Code is in Restricted Mode;
+the literal trigger remains active with raw after text and the label refreshes
+when workspace trust is granted.
+
+Invalid definitions must not crash the extension. Valid definitions continue working, while a concise warning identifies the invalid setting. Malformed `labelDelimiters` or `labelRegex` values report actionable configuration issues but do not discard an otherwise valid trigger; that trigger instead operates without label extraction or replacement.
 
 Level styles accept `normal`, `bold`, `italic`, or `boldItalic`. Unlisted levels
 remain unchanged, and an empty style array disables editor text styling.
@@ -239,7 +266,7 @@ Thus:
 ## Non-goals for the initial release
 
 - Workspace-wide indexing or file grouping.
-- Regex trigger matching or regex label extraction.
+- Regex trigger matching.
 - Persistent bookmarks independent of document text.
 - Commands that insert or edit headings.
 - Next/previous heading commands.
@@ -262,6 +289,10 @@ Thus:
 - The Show Headings command reveals and focuses the Explorer view.
 - Invalid configuration reports an actionable warning without disabling valid triggers.
 - Exact, non-overlapping delimiter pairs extract `${after}` atomically; incomplete pairs preserve the original after text without runtime warnings.
+- A trusted-workspace label regex transforms only `${after}` before template
+  formatting, supports JavaScript capture replacements, and preserves raw text
+  on a non-match. Restricted Mode leaves the same literal heading active without
+  executing its regex.
 - Documents without headings show appropriate welcome content.
 - Folding a heading keeps that heading visible and hides content through the
   line before the next same-level or ancestor-level heading.
@@ -288,6 +319,11 @@ Thus:
 - Keep scanning, label formatting, and hierarchy construction independent from the VS Code API so they can be unit tested.
 - Keep folding-boundary calculation independent from the VS Code API and reuse
   the validated trigger scanner as its source of headings.
+- Compile label expressions once per trigger scan, execute them only after a
+  literal trigger wins a line, and never execute them in Restricted Mode.
+- Treat synchronous backtracking in trusted label expressions as a documented
+  configuration risk; recommend anchored patterns without ambiguous nested
+  quantifiers.
 - Use full-document line scans after a short debounce. Incremental parsing is deferred until profiling demonstrates a need.
 - Treat source text as authoritative; do not persist a heading cache.
 - Do not collect telemetry or make network requests.

@@ -1,10 +1,15 @@
 import type { Heading, TriggerDefinition } from "./model";
 import { createLiteralExpression } from "./literal";
-import { extractDelimitedAfter, formatHeadingLabel } from "./template";
+import {
+  extractDelimitedAfter,
+  formatHeadingLabel,
+  replaceLabelAfter,
+} from "./template";
 
 interface TriggerMatcher {
   readonly definition: TriggerDefinition;
   readonly expression: RegExp;
+  readonly labelExpression?: RegExp;
   readonly configurationOrder: number;
 }
 
@@ -36,6 +41,20 @@ function createHeadingId(
   ])}`;
 }
 
+function createLabelExpression(definition: TriggerDefinition): RegExp | undefined {
+  if (definition.labelRegex === undefined) {
+    return undefined;
+  }
+  if (definition.labelExpression !== undefined) {
+    return definition.labelExpression;
+  }
+  try {
+    return new RegExp(definition.labelRegex.pattern, "u");
+  } catch {
+    return undefined;
+  }
+}
+
 /** Scans a complete document and returns at most one heading per physical line. */
 export function scanDocument(
   documentText: string,
@@ -44,11 +63,21 @@ export function scanDocument(
   caseSensitive: boolean,
 ): Heading[] {
   const matcher_triggerId: TriggerMatcher[] = trigger_triggerId.map(
-    (definition: TriggerDefinition, configurationOrder: number): TriggerMatcher => ({
-      definition,
-      expression: createLiteralExpression(definition.snippet, caseSensitive),
-      configurationOrder,
-    }),
+    (definition: TriggerDefinition, configurationOrder: number): TriggerMatcher => {
+      const labelExpression = createLabelExpression(definition);
+      return labelExpression === undefined
+        ? {
+          definition,
+          expression: createLiteralExpression(definition.snippet, caseSensitive),
+          configurationOrder,
+        }
+        : {
+          definition,
+          expression: createLiteralExpression(definition.snippet, caseSensitive),
+          labelExpression,
+          configurationOrder,
+        };
+    },
   );
   const sourceLine_lineId = documentText.split(/\r\n|\n|\r/);
   const heading_headingId: Heading[] = [];
@@ -81,10 +110,21 @@ export function scanDocument(
     const { definition } = selected.matcher;
     const endCharacter = selected.startCharacter + selected.matchedSnippet.length;
     const after = sourceLine.slice(endCharacter);
+    let labelAfter = after;
+    if (definition.labelDelimiters !== undefined) {
+      labelAfter = extractDelimitedAfter(after, definition.labelDelimiters);
+    } else if (
+      definition.labelRegex !== undefined
+      && selected.matcher.labelExpression !== undefined
+    ) {
+      labelAfter = replaceLabelAfter(
+        after,
+        selected.matcher.labelExpression,
+        definition.labelRegex.replacement,
+      );
+    }
     const label = formatHeadingLabel(definition.labelTemplate, {
-      after: definition.labelDelimiters === undefined
-        ? after
-        : extractDelimitedAfter(after, definition.labelDelimiters),
+      after: labelAfter,
       before: sourceLine.slice(0, selected.startCharacter),
       line: sourceLine,
       trigger: selected.matchedSnippet,

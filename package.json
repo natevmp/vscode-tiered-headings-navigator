@@ -2,7 +2,7 @@
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate and fold user-defined, tiered inline headings in text documents.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -32,7 +32,8 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": "limited",
+      "description": "Literal heading navigation remains available, but labelRegex transformations are disabled until the workspace is trusted."
     }
   },
   "contributes": {
@@ -86,7 +87,7 @@
           "type": "array",
           "scope": "resource",
           "default": [],
-          "markdownDescription": "Literal snippets that define heading levels and pane labels. Use `${after}`, `${before}`, `${line}`, `${trigger}`, or `${lineNumber}` in `labelTemplate`. Optional `labelDelimiters` extract a title from `${after}`.",
+          "markdownDescription": "Literal snippets that define heading levels and pane labels. Use `${after}`, `${before}`, `${line}`, `${trigger}`, or `${lineNumber}` in `labelTemplate`. Optional `labelDelimiters` or `labelRegex` transform `${after}` before formatting.",
           "items": {
             "type": "object",
             "required": [
@@ -94,6 +95,16 @@
               "level"
             ],
             "additionalProperties": false,
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "labelDelimiters",
+                    "labelRegex"
+                  ]
+                }
+              }
+            ],
             "properties": {
               "snippet": {
                 "type": "string",
@@ -131,6 +142,27 @@
                     "minLength": 1,
                     "pattern": "^[^\\r\\n]+$",
                     "description": "Complete closing delimiter."
+                  }
+                }
+              },
+              "labelRegex": {
+                "type": "object",
+                "required": [
+                  "pattern",
+                  "replacement"
+                ],
+                "additionalProperties": false,
+                "markdownDescription": "A case-sensitive Unicode JavaScript regular-expression replacement applied once to text after the trigger, before `labelTemplate`. Disabled in Restricted Mode. Do not combine with `labelDelimiters`.",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[^\\r\\n]+$",
+                    "description": "Regular-expression source. Backslashes must be escaped for JSON."
+                  },
+                  "replacement": {
+                    "type": "string",
+                    "markdownDescription": "Replacement text using JavaScript replacement syntax, including `$1`, `$<name>`, and `$$`. May be empty."
                   }
                 }
               }

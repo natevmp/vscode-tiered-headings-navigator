@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { parseTriggerDefinitions } from "../../src/configuration";
 import type { TriggerDefinition } from "../../src/model";
 import { scanDocument } from "../../src/scanner";
 
@@ -277,6 +278,131 @@ describe("scanDocument", (): void => {
     assert.equal(
       heading_headingId[0]?.label,
       "prefix |Title|prefix @h1 ---- Title ----",
+    );
+  });
+
+  it("replaces only raw after-text without changing trigger or line data", (): void => {
+    const sourceLine = "## @h1 This is the title -----------------";
+    const heading_headingId = scanDocument(
+      sourceLine,
+      "regex-exact",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelRegex: { pattern: "\\s*-+\\s*$", replacement: "" },
+      }],
+      true,
+    );
+
+    assert.equal(heading_headingId.length, 1);
+    assert.equal(heading_headingId[0]?.label, "This is the title");
+    assert.equal(heading_headingId[0]?.startCharacter, 3);
+    assert.equal(heading_headingId[0]?.endCharacter, 6);
+    assert.equal(heading_headingId[0]?.snippet, "@h1");
+    assert.equal(heading_headingId[0]?.matchedSnippet, "@h1");
+    assert.equal(heading_headingId[0]?.sourceLine, sourceLine);
+
+    const contextual_headingId = scanDocument(
+      sourceLine,
+      "regex-context",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${before}|${after}|${line}",
+        labelRegex: { pattern: "\\s*-+\\s*$", replacement: "" },
+      }],
+      true,
+    );
+    assert.equal(
+      contextual_headingId[0]?.label,
+      "## | This is the title|## @h1 This is the title -----------------",
+    );
+  });
+
+  it("supports mixed regex and raw triggers with capture and non-match behavior", (): void => {
+    const trigger_triggerId: TriggerDefinition[] = [
+      {
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "Part ${after}",
+        labelRegex: { pattern: "^\\s*\\[(.+?)\\]\\s*$", replacement: "$1" },
+      },
+      {
+        snippet: "@h2",
+        level: 2,
+        labelTemplate: "${after}",
+        labelRegex: { pattern: "\\s*-+\\s*$", replacement: "" },
+      },
+      { snippet: "@h3", level: 3, labelTemplate: "${after}" },
+    ];
+    const heading_headingId = scanDocument(
+      "@h1 [Captured title]\n@h2 Non-match fallback\n@h3 Raw title -----",
+      "mixed-regex",
+      trigger_triggerId,
+      true,
+    );
+
+    assert.deepEqual(
+      heading_headingId.map((heading) => heading.label),
+      ["Part Captured title", "Non-match fallback", "Raw title -----"],
+    );
+  });
+
+  it("falls back to raw after-text for a directly constructed invalid regex", (): void => {
+    const invalidTrigger: TriggerDefinition = {
+      snippet: "@h1",
+      level: 1,
+      labelTemplate: "${after}",
+      labelRegex: { pattern: "[", replacement: "" },
+    };
+
+    assert.doesNotThrow((): void => {
+      const heading_headingId = scanDocument(
+        "@h1 Raw title ----",
+        "invalid-regex",
+        [invalidTrigger],
+        true,
+      );
+      assert.equal(heading_headingId[0]?.label, "Raw title ----");
+    });
+  });
+
+  it("uses a trusted parsed expression without compiling the label regex again", (): void => {
+    const parsed = parseTriggerDefinitions([{
+      snippet: "@h1",
+      level: 1,
+      labelRegex: { pattern: "\\s*-+\\s*$", replacement: "" },
+    }]);
+    const trigger = parsed.trigger_triggerId[0];
+    assert.equal(trigger?.labelExpression?.source, "\\s*-+\\s*$");
+    assert.equal(trigger?.labelExpression?.flags, "u");
+
+    const originalRegExp = globalThis.RegExp;
+    let regexpConstructionCount = 0;
+    globalThis.RegExp = new Proxy(originalRegExp, {
+      construct(target, argument_argumentId, newTarget): RegExp {
+        regexpConstructionCount += 1;
+        return Reflect.construct(target, argument_argumentId, newTarget) as RegExp;
+      },
+    });
+
+    try {
+      const heading_headingId = scanDocument(
+        "@h1 Parsed title -----",
+        "parsed-regex",
+        parsed.trigger_triggerId,
+        true,
+      );
+      assert.equal(heading_headingId[0]?.label, "Parsed title");
+    } finally {
+      globalThis.RegExp = originalRegExp;
+    }
+
+    assert.equal(
+      regexpConstructionCount,
+      1,
+      "only the literal trigger matcher should be compiled during scanning",
     );
   });
 });

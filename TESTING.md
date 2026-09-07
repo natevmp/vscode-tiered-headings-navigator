@@ -113,6 +113,31 @@ warning appears. Restore it and confirm extraction resumes. Try mismatched
 delimiter case and overlapping delimiters, and confirm extraction occurs only
 for complete, exact, case-sensitive, non-overlapping pairs.
 
+Then configure a regex label replacement:
+
+```json
+{
+  "snippet": "@h1",
+  "level": 1,
+  "labelRegex": {
+    "pattern": "\\s+-+\\s*$",
+    "replacement": ""
+  }
+}
+```
+
+Confirm `## @h1 This is the title -----------------` appears as **This is the
+title**. Change the number of dashes and confirm the label remains unchanged.
+Temporarily remove the dashes and confirm the raw title remains visible. Also
+test a capture replacement, an invalid pattern, and a trigger containing both
+`labelRegex` and `labelDelimiters`; the invalid or conflicting regex must not
+disable literal heading detection, and delimiters must win a conflict.
+
+Open the fixture workspace in Restricted Mode and confirm the regex is not
+executed, the heading remains present with its raw after text, and one
+configuration notice explains the restriction. Trust the workspace and confirm
+the transformed label appears without restarting the Extension Host.
+
 Set `tieredHeadings.editor.levelStyles` to `[]` and confirm editor text styling
 disappears while gutter markers and navigation continue working. Disable
 `tieredHeadings.gutter.enabled` and confirm all four gutter marker types disappear

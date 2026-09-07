@@ -36,6 +36,15 @@ export function extractDelimitedAfter(
   return trimmedAfter.slice(titleStart, titleEnd).trim();
 }
 
+/** Applies one JavaScript replacement to raw text after a matched trigger. */
+export function replaceLabelAfter(
+  after: string,
+  expression: RegExp,
+  replacement: string,
+): string {
+  return after.replace(expression, replacement);
+}
+
 /** Returns the first unsupported placeholder, including its template delimiters. */
 export function findUnsupportedPlaceholder(template: string): string | undefined {
   placeholderPattern.lastIndex = 0;

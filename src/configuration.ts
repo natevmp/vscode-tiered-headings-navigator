@@ -2,6 +2,7 @@ import type {
   HeadingStyleMap,
   HeadingTextStyle,
   LabelDelimiters,
+  LabelRegex,
   LevelStyleDefinition,
   TriggerDefinition,
 } from "./model";
@@ -25,6 +26,11 @@ export interface LevelStyleConfigurationResult {
   readonly issue_issueId: ConfigurationIssue[];
 }
 
+interface ParsedLabelRegex {
+  readonly definition: LabelRegex;
+  readonly expression: RegExp;
+}
+
 /** Default whole-line styles used when the setting is absent or malformed. */
 export const defaultLevelStyle_level: readonly LevelStyleDefinition[] = Object.freeze([
   Object.freeze({ level: 1, style: "bold" }),
@@ -41,8 +47,10 @@ const allowedTriggerKeys = new Set([
   "level",
   "labelTemplate",
   "labelDelimiters",
+  "labelRegex",
 ]);
 const allowedLabelDelimiterKeys = new Set(["start", "end"]);
+const allowedLabelRegexKeys = new Set(["pattern", "replacement"]);
 const allowedLevelStyleKeys = new Set(["level", "style"]);
 const triggerSettingKey = "tieredHeadings.triggers";
 const levelStyleSettingKey = "tieredHeadings.editor.levelStyles";
@@ -118,13 +126,86 @@ function parseLabelDelimiters(
     : undefined;
 }
 
+function parseLabelRegex(
+  raw: unknown,
+  triggerIndex: number,
+  issue_issueId: ConfigurationIssue[],
+): ParsedLabelRegex | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!isRecord(raw)) {
+    issue_issueId.push({
+      triggerIndex,
+      message: `Trigger ${triggerIndex + 1} labelRegex must be an object.`,
+    });
+    return undefined;
+  }
+
+  let valid = true;
+  Object.keys(raw).forEach((key: string): void => {
+    if (!allowedLabelRegexKeys.has(key)) {
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} labelRegex contains unsupported property "${key}".`,
+      });
+      valid = false;
+    }
+  });
+
+  const pattern = raw.pattern;
+  const replacement = raw.replacement;
+  let expression: RegExp | undefined;
+  if (typeof pattern !== "string" || pattern.length === 0) {
+    issue_issueId.push({
+      triggerIndex,
+      message: `Trigger ${triggerIndex + 1} labelRegex.pattern must be a non-empty string.`,
+    });
+    valid = false;
+  } else if (/[\r\n]/.test(pattern)) {
+    issue_issueId.push({
+      triggerIndex,
+      message: `Trigger ${triggerIndex + 1} labelRegex.pattern cannot contain a line break.`,
+    });
+    valid = false;
+  } else {
+    try {
+      expression = new RegExp(pattern, "u");
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} labelRegex.pattern is not a valid Unicode regular expression: ${detail}`,
+      });
+      valid = false;
+    }
+  }
+
+  if (typeof replacement !== "string") {
+    issue_issueId.push({
+      triggerIndex,
+      message: `Trigger ${triggerIndex + 1} labelRegex.replacement must be a string.`,
+    });
+    valid = false;
+  }
+
+  return valid
+      && typeof pattern === "string"
+      && typeof replacement === "string"
+      && expression !== undefined
+    ? { definition: { pattern, replacement }, expression }
+    : undefined;
+}
+
 /** Parses untrusted trigger configuration while retaining every valid definition. */
 export function parseTriggerDefinitions(
   raw: unknown,
   caseSensitive = true,
+  workspaceTrusted = true,
 ): TriggerConfigurationResult {
   const trigger_triggerId: TriggerDefinition[] = [];
   const issue_issueId: ConfigurationIssue[] = [];
+  let suppressedLabelRegex = false;
 
   if (!Array.isArray(raw)) {
     issue_issueId.push({
@@ -155,6 +236,17 @@ export function parseTriggerDefinitions(
       triggerIndex,
       issue_issueId,
     );
+    const hasExtractionConflict = item.labelDelimiters !== undefined
+      && item.labelRegex !== undefined;
+    let parsedLabelRegex: ParsedLabelRegex | undefined;
+    if (hasExtractionConflict) {
+      issue_issueId.push({
+        triggerIndex,
+        message: `Trigger ${triggerIndex + 1} cannot use both labelDelimiters and labelRegex; labelDelimiters will be used.`,
+      });
+    } else if (workspaceTrusted) {
+      parsedLabelRegex = parseLabelRegex(item.labelRegex, triggerIndex, issue_issueId);
+    }
 
     Object.keys(item).forEach((key: string): void => {
       if (!allowedTriggerKeys.has(key)) {
@@ -224,10 +316,35 @@ export function parseTriggerDefinitions(
       return;
     }
 
-    trigger_triggerId.push(labelDelimiters === undefined
-      ? { snippet, level, labelTemplate }
-      : { snippet, level, labelTemplate, labelDelimiters });
+    if (
+      !workspaceTrusted
+      && item.labelRegex !== undefined
+      && !hasExtractionConflict
+    ) {
+      suppressedLabelRegex = true;
+    }
+
+    if (labelDelimiters !== undefined) {
+      trigger_triggerId.push({ snippet, level, labelTemplate, labelDelimiters });
+    } else if (parsedLabelRegex !== undefined) {
+      trigger_triggerId.push({
+        snippet,
+        level,
+        labelTemplate,
+        labelRegex: parsedLabelRegex.definition,
+        labelExpression: parsedLabelRegex.expression,
+      });
+    } else {
+      trigger_triggerId.push({ snippet, level, labelTemplate });
+    }
   });
+
+  if (suppressedLabelRegex) {
+    issue_issueId.push({
+      triggerIndex: null,
+      message: "Label regex transformations are disabled until this workspace is trusted.",
+    });
+  }
 
   return {
     trigger_triggerId,

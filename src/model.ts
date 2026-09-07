@@ -4,12 +4,21 @@ export interface LabelDelimiters {
   readonly end: string;
 }
 
+/** A case-sensitive Unicode replacement applied to text after a trigger. */
+export interface LabelRegex {
+  readonly pattern: string;
+  readonly replacement: string;
+}
+
 /** A validated, literal heading trigger. */
 export interface TriggerDefinition {
   readonly snippet: string;
   readonly level: number;
   readonly labelTemplate: string;
   readonly labelDelimiters?: LabelDelimiters;
+  readonly labelRegex?: LabelRegex;
+  /** Precompiled only for validated, trusted configuration. */
+  readonly labelExpression?: RegExp;
 }
 
 /** Whole-line text styles supported for detected headings. */
