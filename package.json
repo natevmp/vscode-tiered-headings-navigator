@@ -3,7 +3,7 @@
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate and fold user-defined, tiered inline headings in text documents.",
   "version": "0.0.6",
-  "publisher": "local",
+  "publisher": "natevmp",
   "private": true,
   "license": "MIT",
   "repository": {

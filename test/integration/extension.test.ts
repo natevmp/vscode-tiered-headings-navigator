@@ -32,7 +32,7 @@ interface TreeSelectionItem {
   readonly line: number;
 }
 
-const extensionId = "local.tiered-headings-navigator";
+const extensionId = "natevmp.tiered-headings-navigator";
 const inspectCommand = "_tieredHeadings.getActiveSnapshot";
 const inspectTargetsCommand = "_tieredHeadings.getTreeNavigationTargets";
 const inspectViewVisibleCommand = "_tieredHeadings.isViewVisible";
@@ -42,8 +42,9 @@ const inspectTreeSelectionCommand = "_tieredHeadings.getTreeSelection";
 const focusTreeItemCommand = "_tieredHeadings.focusTreeItem";
 const applyNavigatorFoldingStateCommand = "_tieredHeadings.applyNavigatorFoldingState";
 const waitForPendingInteractionsCommand = "_tieredHeadings.waitForPendingInteractions";
-const pinnedListCommandWaitMilliseconds = 250;
-let pinnedListCommandError: Error | undefined;
+const navigatorViewFocusCommand = "tieredHeadings.explorer.focus";
+const navigatorFocusSettlingAttemptCount = 3;
+const navigatorFocusSettlingMilliseconds = 100;
 
 async function openSampleDocument(): Promise<vscode.TextEditor> {
   return openFixtureDocument("sample.txt");
@@ -286,29 +287,27 @@ async function waitForLineVisibility(
   assert.equal(lineIsVisible(editor, line), expectedVisibility);
 }
 
-async function executePinnedListCommand(command: "list.collapse" | "list.expand"): Promise<void> {
-  const operation = vscode.commands.executeCommand(command).then(
-    (): void => {},
-    (error: unknown): void => {
-      pinnedListCommandError = error instanceof Error ? error : new Error(String(error));
-    },
-  );
-  await Promise.race([
-    operation,
-    new Promise<void>((resolve): void => {
-      setTimeout(resolve, pinnedListCommandWaitMilliseconds);
-    }),
-  ]);
-  throwPinnedListCommandError();
-}
-
-function throwPinnedListCommandError(): void {
-  if (pinnedListCommandError === undefined) {
-    return;
+async function executeFocusedListCommand(
+  command: "list.collapse" | "list.expand",
+  headingId: string,
+  expectedSelectionLabel: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < navigatorFocusSettlingAttemptCount; attempt += 1) {
+    await vscode.commands.executeCommand(navigatorViewFocusCommand);
+    assert.equal(
+      await vscode.commands.executeCommand<boolean>(focusTreeItemCommand, headingId, false),
+      true,
+    );
+    const selection = await waitForTreeSelection(expectedSelectionLabel);
+    assert.equal(selection.id, headingId);
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, navigatorFocusSettlingMilliseconds);
+    });
   }
-  const error = pinnedListCommandError;
-  pinnedListCommandError = undefined;
-  throw error;
+  await vscode.commands.executeCommand(command);
+  await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+  const selection = await waitForTreeSelection(expectedSelectionLabel);
+  assert.equal(selection.id, headingId);
 }
 
 type FoldingLineRange = readonly [startLine: number, endLine: number];
@@ -403,7 +402,6 @@ suite("Tiered Headings extension", (): void => {
 
   suiteTeardown(async (): Promise<void> => {
     await openSampleDocument();
-    throwPinnedListCommandError();
   });
 
   test("scans the configured headings in the active document", async (): Promise<void> => {
@@ -691,8 +689,7 @@ suite("Tiered Headings extension", (): void => {
         await vscode.commands.executeCommand<boolean>(focusTreeItemCommand, beta.id),
         true,
       );
-      await executePinnedListCommand("list.collapse");
-      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await executeFocusedListCommand("list.collapse", beta.id, "Beta");
       assert.equal(lineIsVisible(editor, beta.line + 1), true);
 
       const laterGammaPosition = new vscode.Position(gamma.line + 2, 0);
@@ -773,15 +770,11 @@ suite("Tiered Headings extension", (): void => {
       );
 
       // These pinned workbench commands exercise the real TreeView event path.
-      await executePinnedListCommand("list.collapse");
-      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await executeFocusedListCommand("list.collapse", enabledAlpha.id, "Alpha");
       await waitForLineVisibility(editor, 1, false);
-      throwPinnedListCommandError();
 
-      await executePinnedListCommand("list.expand");
-      await vscode.commands.executeCommand(waitForPendingInteractionsCommand);
+      await executeFocusedListCommand("list.expand", enabledAlpha.id, "Alpha");
       await waitForLineVisibility(editor, 1, true);
-      throwPinnedListCommandError();
     } finally {
       await vscode.commands.executeCommand("editor.unfoldAll");
       await configuration.update(

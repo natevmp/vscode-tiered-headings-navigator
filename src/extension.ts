@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext): void {
       ),
       vscode.commands.registerCommand(
         "_tieredHeadings.focusTreeItem",
-        async (headingId: string): Promise<boolean> => {
+        async (headingId: string, expand: boolean | number = 1): Promise<boolean> => {
           const heading = provider.getNodeById(headingId);
           if (heading === undefined) {
             return false;
@@ -152,7 +152,7 @@ export function activate(context: vscode.ExtensionContext): void {
           await treeView.reveal(heading, {
             select: true,
             focus: true,
-            expand: 1,
+            expand,
           });
           await controller.waitForPendingInteractions();
           return true;
