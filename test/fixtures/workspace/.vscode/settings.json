@@ -5,28 +5,42 @@
       "level": 1,
       "labelTemplate": "${after}",
       "labelRegex": {
-        "pattern": "\\s+-+\\s*$",
+        "pattern": "\\s+[-=]+\\s*$",
         "replacement": ""
       }
     },
     {
       "snippet": "@h2",
       "level": 2,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelRegex": {
+        "pattern": "\\s+[-=]+\\s*$",
+        "replacement": ""
+      }
     },
     {
       "snippet": "@h3",
       "level": 3,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelRegex": {
+        "pattern": "\\s+[-=]+\\s*$",
+        "replacement": ""
+      }
     },
     {
       "snippet": "@h4",
       "level": 4,
-      "labelTemplate": "${after}"
+      "labelTemplate": "${after}",
+      "labelRegex": {
+        "pattern": "\\s+[-=]+\\s*$",
+        "replacement": ""
+      }
     }
   ],
   "[plaintext]": {
     "editor.folding": true,
-    "editor.foldingStrategy": "auto"
+    "editor.foldingStrategy": "auto",
+    "editor.wordWrap": "bounded",
+    "editor.wordWrapColumn": 60
   }
 }

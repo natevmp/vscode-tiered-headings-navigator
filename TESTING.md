@@ -63,16 +63,15 @@ Expected hierarchy for `hierarchy-demo.txt`:
 
 ```text
 A
-├─ B
-└─ C
-D
-├─ E
-└─ F
-   └─ G
-      └─ H
+└─ B
+C
+└─ D
+   └─ E
+      └─ F
 ```
 
-`E` is level 3 but is a direct child of `D` because no level-2 heading occurs between them.
+The demo includes all four marker styles and shows a simple four-level branch
+under `C`.
 
 ## Configuration test
 

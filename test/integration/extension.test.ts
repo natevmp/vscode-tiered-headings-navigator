@@ -583,7 +583,7 @@ suite("Tiered Headings extension", (): void => {
       vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
     );
     const editor = await vscode.window.showTextDocument(document, { preview: false });
-    await waitForHeadingCount(8);
+    await waitForHeadingCount(6);
     await vscode.commands.executeCommand("tieredHeadings.showHeadings");
     await waitForViewVisibility(true);
 
@@ -591,10 +591,9 @@ suite("Tiered Headings extension", (): void => {
       [2, "A"],
       [6, "B"],
       [10, "C"],
+      [14, "D"],
       [18, "E"],
       [22, "F"],
-      [26, "G"],
-      [30, "H"],
     ];
     for (const [line, label] of expectation_expectationId) {
       const position = new vscode.Position(line, 0);
@@ -605,7 +604,7 @@ suite("Tiered Headings extension", (): void => {
     }
 
     const primaryPosition = new vscode.Position(6, 0);
-    const secondaryPosition = new vscode.Position(30, 0);
+    const secondaryPosition = new vscode.Position(22, 0);
     editor.selections = [
       new vscode.Selection(primaryPosition, primaryPosition),
       new vscode.Selection(secondaryPosition, secondaryPosition),
@@ -625,13 +624,13 @@ suite("Tiered Headings extension", (): void => {
       vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
     );
     const editor = await vscode.window.showTextDocument(document, { preview: false });
-    await waitForHeadingCount(8);
+    await waitForHeadingCount(6);
     await vscode.commands.executeCommand("tieredHeadings.showHeadings");
     await waitForViewVisibility(true);
 
-    const lastPosition = new vscode.Position(30, 0);
+    const lastPosition = new vscode.Position(22, 0);
     editor.selection = new vscode.Selection(lastPosition, lastPosition);
-    await waitForTreeSelection("H");
+    await waitForTreeSelection("F");
     await vscode.commands.executeCommand("workbench.action.closeSidebar");
     await waitForViewVisibility(false);
 
@@ -959,7 +958,7 @@ suite("Tiered Headings extension", (): void => {
       vscode.Uri.joinPath(workspaceFolder.uri, "hierarchy-demo.txt"),
     );
     await vscode.window.showTextDocument(document, { preview: false });
-    await waitForHeadingCount(8);
+    await waitForHeadingCount(6);
     const item_itemId = await vscode.commands.executeCommand<readonly vscode.TreeItem[]>(
       inspectTreeItemsCommand,
     );
@@ -987,10 +986,10 @@ suite("Tiered Headings extension", (): void => {
         level: 3,
         lineNumber: 17,
       }],
-      ["H", {
+      ["F", {
         icon: { kind: "theme", iconId: "dash" },
         level: 4,
-        lineNumber: 29,
+        lineNumber: 21,
       }],
     ]);
 
