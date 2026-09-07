@@ -18,6 +18,19 @@ or network requests.
 - Customize labels and bold or italic styles, with fixed level-specific gutter
   symbols.
 
+## Install
+
+Download the `.vsix` and checksum from the
+[latest GitHub release](https://github.com/natevmp/vscode-tiered-headings-navigator/releases/latest).
+In VS Code, run **Extensions: Install from VSIX...**, select the downloaded file,
+and reload the window.
+
+You can also install it from a terminal:
+
+```sh
+code --install-extension ./tiered-headings-navigator-0.0.6.vsix --force
+```
+
 ## Quick start
 
 Add trigger definitions to VS Code settings:
