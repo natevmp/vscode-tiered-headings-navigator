@@ -31,7 +31,7 @@ interface ParsedLabelRegex {
   readonly expression: RegExp;
 }
 
-/** Default whole-line styles used when the setting is absent or malformed. */
+/** Default heading styles used when the setting is absent or malformed. */
 export const defaultLevelStyle_level: readonly LevelStyleDefinition[] = Object.freeze([
   Object.freeze({ level: 1, style: "bold" }),
   Object.freeze({ level: 2, style: "boldItalic" }),
@@ -170,7 +170,7 @@ function parseLabelRegex(
     valid = false;
   } else {
     try {
-      expression = new RegExp(pattern, "u");
+      expression = new RegExp(pattern, "du");
     } catch (error: unknown) {
       const detail = error instanceof Error ? error.message : String(error);
       issue_issueId.push({
@@ -352,7 +352,7 @@ export function parseTriggerDefinitions(
   };
 }
 
-/** Parses untrusted whole-line style configuration while retaining valid entries. */
+/** Parses untrusted heading style configuration while retaining valid entries. */
 export function parseLevelStyleDefinitions(raw: unknown): LevelStyleConfigurationResult {
   const levelStyle_level: LevelStyleDefinition[] = [];
   const issue_issueId: ConfigurationIssue[] = [];

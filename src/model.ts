@@ -21,16 +21,22 @@ export interface TriggerDefinition {
   readonly labelExpression?: RegExp;
 }
 
-/** Whole-line text styles supported for detected headings. */
+/** Text styles supported for detected headings. */
 export type HeadingTextStyle = "normal" | "bold" | "italic" | "boldItalic";
 
-/** Resolved whole-line styles keyed by positive heading level. */
+/** Resolved text styles keyed by positive heading level. */
 export type HeadingStyleMap = ReadonlyMap<number, HeadingTextStyle>;
 
 /** A validated text style associated with a positive heading level. */
 export interface LevelStyleDefinition {
   readonly level: number;
   readonly style: HeadingTextStyle;
+}
+
+/** A half-open source span contributing to a label, in UTF-16 line offsets. */
+export interface HeadingTitleRange {
+  readonly startCharacter: number;
+  readonly endCharacter: number;
 }
 
 /** A heading detected in a document. Character positions are zero-based. */
@@ -41,6 +47,8 @@ export interface Heading {
   readonly snippet: string;
   readonly matchedSnippet: string;
   readonly label: string;
+  /** Sorted, non-overlapping source spans; generated label text has no range. */
+  readonly titleRanges: readonly HeadingTitleRange[];
   readonly line: number;
   readonly startCharacter: number;
   readonly endCharacter: number;

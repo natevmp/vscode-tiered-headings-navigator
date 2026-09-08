@@ -1,9 +1,10 @@
 import type { Heading, TriggerDefinition } from "./model";
+import { labelTitleRanges, sourceLabel } from "./labelSource";
 import { createLiteralExpression } from "./literal";
 import {
-  extractDelimitedAfter,
-  formatHeadingLabel,
-  replaceLabelAfter,
+  extractDelimitedLabelAfter,
+  formatMappedHeadingLabel,
+  replaceMappedLabelAfter,
 } from "./template";
 
 interface TriggerMatcher {
@@ -45,11 +46,11 @@ function createLabelExpression(definition: TriggerDefinition): RegExp | undefine
   if (definition.labelRegex === undefined) {
     return undefined;
   }
-  if (definition.labelExpression !== undefined) {
+  if (definition.labelExpression?.hasIndices === true) {
     return definition.labelExpression;
   }
   try {
-    return new RegExp(definition.labelRegex.pattern, "u");
+    return new RegExp(definition.labelRegex.pattern, "du");
   } catch {
     return undefined;
   }
@@ -109,27 +110,28 @@ export function scanDocument(
 
     const { definition } = selected.matcher;
     const endCharacter = selected.startCharacter + selected.matchedSnippet.length;
-    const after = sourceLine.slice(endCharacter);
+    const after = sourceLabel(sourceLine.slice(endCharacter), endCharacter);
     let labelAfter = after;
     if (definition.labelDelimiters !== undefined) {
-      labelAfter = extractDelimitedAfter(after, definition.labelDelimiters);
+      labelAfter = extractDelimitedLabelAfter(after, definition.labelDelimiters);
     } else if (
       definition.labelRegex !== undefined
       && selected.matcher.labelExpression !== undefined
     ) {
-      labelAfter = replaceLabelAfter(
+      labelAfter = replaceMappedLabelAfter(
         after,
         selected.matcher.labelExpression,
         definition.labelRegex.replacement,
       );
     }
-    const label = formatHeadingLabel(definition.labelTemplate, {
+    const mappedLabel = formatMappedHeadingLabel(definition.labelTemplate, {
       after: labelAfter,
-      before: sourceLine.slice(0, selected.startCharacter),
-      line: sourceLine,
-      trigger: selected.matchedSnippet,
+      before: sourceLabel(sourceLine.slice(0, selected.startCharacter), 0),
+      line: sourceLabel(sourceLine, 0),
+      trigger: sourceLabel(selected.matchedSnippet, selected.startCharacter),
       lineNumber: line + 1,
     });
+    const label = mappedLabel.text;
     const triggerKey = JSON.stringify([
       documentIdentity,
       definition.snippet,
@@ -144,6 +146,7 @@ export function scanDocument(
       snippet: definition.snippet,
       matchedSnippet: selected.matchedSnippet,
       label,
+      titleRanges: labelTitleRanges(mappedLabel),
       line,
       startCharacter: selected.startCharacter,
       endCharacter,

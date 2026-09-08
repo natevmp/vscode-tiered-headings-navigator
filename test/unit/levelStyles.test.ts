@@ -21,6 +21,7 @@ function createHeading(id: string, level: number): Heading {
     startCharacter: 0,
     endCharacter: 2,
     sourceLine: `@h ${id}`,
+    titleRanges: [{ startCharacter: 3, endCharacter: 3 + id.length }],
   };
 }
 

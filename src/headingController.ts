@@ -708,6 +708,7 @@ export class HeadingController implements vscode.Disposable {
       heading_headingId,
       settings.gutterEnabled,
       settings.styleByLevel,
+      settings.decorateOnlyTitle,
     );
     this.treeView.description = this.getDocumentDescription(document);
     this.treeView.message = this.getViewMessage(

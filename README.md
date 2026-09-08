@@ -15,8 +15,8 @@ or network requests.
 - Navigate from the **Headings** tree and follow the active editor cursor.
 - Update immediately as unsaved headings are added, renamed, or reorganized.
 - Add native editor folds, with optional one-way tree-to-editor fold syncing.
-- Customize labels and bold or italic styles, with fixed level-specific gutter
-  symbols.
+- Customize labels and bold or italic styles for whole heading lines or just
+  their titles, with fixed level-specific gutter symbols.
 
 ## Install
 
@@ -28,7 +28,7 @@ and reload the window.
 You can also install it from a terminal:
 
 ```sh
-code --install-extension ./tiered-headings-navigator-0.0.6.vsix --force
+code --install-extension ./tiered-headings-navigator-0.0.7.vsix --force
 ```
 
 ## Quick start
@@ -127,6 +127,31 @@ For exact surrounding markers, use literal delimiters instead:
 `@h2 [[ Installation ]]` is displayed as **Installation**. Delimiters must both
 match and cannot be combined with `labelRegex` on the same trigger.
 
+## Editor title styling
+
+Heading font styles apply to the whole line by default. To style only the source
+text used in the **Headings** label, enable:
+
+```json
+"tieredHeadings.editor.decorateOnlyTitle": true
+```
+
+With the quick-start regex, `## @h1 Introduction -----------------` styles only
+**Introduction**, not the comment prefix, trigger, or trailing separator. With
+`labelDelimiters`, the removed delimiters are also left unstyled.
+
+Styling follows the source fragments used by the final label: regex captures can
+produce several separate styled spans. Generated template/replacement text,
+`${lineNumber}`, and the untitled-label fallback have no source span to style.
+Using `${trigger}`, `${before}`, or `${line}` explicitly includes that source text
+in styling; `${line}` can therefore still style the complete line. In Restricted
+Mode, styling follows the untransformed label because regex replacements are
+disabled.
+
+The toggle updates immediately and does not change gutter markers, navigation,
+folding, or the configured level styles. Set it back to `false` to restore
+whole-line styling.
+
 ## Navigation and folding
 
 While the **Headings** view is visible, its selection follows the section
@@ -150,7 +175,8 @@ Provider-based folding requires VS Code's `editor.folding` setting and the
 | `tieredHeadings.gutter.enabled` | `true` | Shows level symbols in the gutter |
 | `tieredHeadings.folding.enabled` | `true` | Provides heading-derived folds |
 | `tieredHeadings.folding.syncFromNavigator` | `false` | Mirrors tree folding into the editor |
-| `tieredHeadings.editor.levelStyles` | Levels 1–3 styled | Configures whole-line font styles |
+| `tieredHeadings.editor.levelStyles` | Levels 1–3 styled | Configures heading font styles |
+| `tieredHeadings.editor.decorateOnlyTitle` | `false` | Styles only the source text used in the pane label |
 
 Level styles support `normal`, `bold`, `italic`, and `boldItalic`. Use an empty
 array to disable heading text styling.

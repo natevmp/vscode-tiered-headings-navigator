@@ -73,6 +73,31 @@ C
 The demo includes all four marker styles and shows a simple four-level branch
 under `C`.
 
+## Title-only decoration test
+
+1. Open `regex-label.txt` with the configured trailing-separator regex and leave
+   `tieredHeadings.editor.decorateOnlyTitle` at its default `false`. Confirm the
+   full heading line is bold, including `## @h1` and the separator.
+2. Enable `tieredHeadings.editor.decorateOnlyTitle`. Confirm only **This is the
+   title** becomes bold, without a reload or manual refresh. The gutter marker,
+   pane label, navigation target, and folding must not change.
+3. Try `@h2 [[ Installation ]]` with matching `labelDelimiters`. Only the title
+   should receive that level's style, not the trigger or delimiters. Remove a
+   delimiter and confirm styling follows the same raw fallback as the pane.
+4. Try a regex that reorders two captures using `$2 / $1`. Only the two captured
+   source fragments should be styled; the generated slash has no editor span.
+   Use repeated identical words to confirm the correct occurrences are styled.
+5. Add a generated template prefix such as `Section ${lineNumber}: ${after}`.
+   Only the source-backed part should be styled. A constant-only or empty label
+   should leave source text unstyled, while its gutter marker remains visible.
+6. Explicitly include `${trigger}`, `${before}`, or `${line}` and confirm those
+   source fragments are styled as well. `${line}` can include the full line.
+7. Edit the title without saving, including text with emoji, then switch editors.
+   Confirm ranges track the new title and no stale decorations remain in the old
+   editor. Repeat with bold, italic, bold italic, and disabled level styles.
+8. Disable the toggle and confirm whole-line styling is restored immediately.
+   Check both light and dark themes and leave the toggle at `false` afterward.
+
 ## Configuration test
 
 Use the gear button in the **Headings** view to open settings. Try changing a label template:

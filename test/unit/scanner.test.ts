@@ -21,6 +21,10 @@ describe("scanDocument", (): void => {
     assert.equal(heading_headingId[0]?.startCharacter, 3);
     assert.equal(heading_headingId[0]?.endCharacter, 17);
     assert.equal(heading_headingId[0]?.label, "Literal title");
+    assert.deepEqual(heading_headingId[0]?.titleRanges, [{
+      startCharacter: 18,
+      endCharacter: 31,
+    }]);
   });
 
   it("chooses earliest, then longest, then configuration order", (): void => {
@@ -97,14 +101,55 @@ describe("scanDocument", (): void => {
         end: heading.endCharacter,
         source: heading.sourceLine,
         label: heading.label,
+        titleRanges: heading.titleRanges,
       })),
       [
-        { line: 0, start: 0, end: 1, source: "# one", label: "1: one" },
-        { line: 1, start: 3, end: 4, source: "xx # two", label: "2: two" },
-        { line: 2, start: 0, end: 1, source: "# three", label: "3: three" },
-        { line: 3, start: 7, end: 8, source: "prefix # four", label: "4: four" },
+        {
+          line: 0,
+          start: 0,
+          end: 1,
+          source: "# one",
+          label: "1: one",
+          titleRanges: [{ startCharacter: 1, endCharacter: 5 }],
+        },
+        {
+          line: 1,
+          start: 3,
+          end: 4,
+          source: "xx # two",
+          label: "2: two",
+          titleRanges: [{ startCharacter: 4, endCharacter: 8 }],
+        },
+        {
+          line: 2,
+          start: 0,
+          end: 1,
+          source: "# three",
+          label: "3: three",
+          titleRanges: [{ startCharacter: 1, endCharacter: 7 }],
+        },
+        {
+          line: 3,
+          start: 7,
+          end: 8,
+          source: "prefix # four",
+          label: "4: four",
+          titleRanges: [{ startCharacter: 8, endCharacter: 13 }],
+        },
       ],
     );
+  });
+
+  it("uses UTF-16 line offsets for source-backed plain labels", (): void => {
+    const heading = scanDocument(
+      "😀 @h1  Café 😀  ",
+      "utf16",
+      [{ snippet: "@h1", level: 1, labelTemplate: "${after}" }],
+      true,
+    )[0];
+
+    assert.equal(heading?.label, "Café 😀");
+    assert.deepEqual(heading?.titleRanges, [{ startCharacter: 8, endCharacter: 15 }]);
   });
 
   it("creates stable IDs with ordinals only among otherwise-identical headings", (): void => {
@@ -177,6 +222,10 @@ describe("scanDocument", (): void => {
     );
 
     assert.equal(heading_headingId[0]?.label, "A title");
+    assert.deepEqual(heading_headingId[0]?.titleRanges, [{
+      startCharacter: 15,
+      endCharacter: 22,
+    }]);
     assert.equal(heading_headingId[0]?.sourceLine, "# @h1   ----   A title   ----  ");
   });
 
@@ -227,6 +276,14 @@ describe("scanDocument", (): void => {
       heading_headingId.map((heading) => heading.label),
       ["--- Start mismatch ----", "---- End mismatch ---", "-----"],
     );
+    assert.deepEqual(
+      heading_headingId.map((heading) => heading.titleRanges),
+      [
+        [{ startCharacter: 4, endCharacter: 27 }],
+        [{ startCharacter: 4, endCharacter: 25 }],
+        [{ startCharacter: 4, endCharacter: 9 }],
+      ],
+    );
   });
 
   it("keeps delimiter matching case-sensitive for case-insensitive triggers", (): void => {
@@ -260,6 +317,7 @@ describe("scanDocument", (): void => {
     );
 
     assert.equal(heading_headingId[0]?.label, "Untitled heading (line 1)");
+    assert.deepEqual(heading_headingId[0]?.titleRanges, []);
   });
 
   it("preserves before and line contexts during delimiter extraction", (): void => {
@@ -302,6 +360,10 @@ describe("scanDocument", (): void => {
     assert.equal(heading_headingId[0]?.snippet, "@h1");
     assert.equal(heading_headingId[0]?.matchedSnippet, "@h1");
     assert.equal(heading_headingId[0]?.sourceLine, sourceLine);
+    assert.deepEqual(heading_headingId[0]?.titleRanges, [{
+      startCharacter: 7,
+      endCharacter: 24,
+    }]);
 
     const contextual_headingId = scanDocument(
       sourceLine,
@@ -365,6 +427,10 @@ describe("scanDocument", (): void => {
         true,
       );
       assert.equal(heading_headingId[0]?.label, "Raw title ----");
+      assert.deepEqual(heading_headingId[0]?.titleRanges, [{
+        startCharacter: 4,
+        endCharacter: 18,
+      }]);
     });
   });
 
@@ -376,7 +442,7 @@ describe("scanDocument", (): void => {
     }]);
     const trigger = parsed.trigger_triggerId[0];
     assert.equal(trigger?.labelExpression?.source, "\\s*-+\\s*$");
-    assert.equal(trigger?.labelExpression?.flags, "u");
+    assert.equal(trigger?.labelExpression?.flags, "du");
 
     const originalRegExp = globalThis.RegExp;
     let regexpConstructionCount = 0;
@@ -404,5 +470,64 @@ describe("scanDocument", (): void => {
       1,
       "only the literal trigger matcher should be compiled during scanning",
     );
+  });
+
+  it("maps template placeholders and excludes generated-only labels", (): void => {
+    const headings = scanDocument(
+      "pre @h1 after\n@h1 source\n@h1   ",
+      "template-ranges",
+      [
+        {
+          snippet: "@h1",
+          level: 1,
+          labelTemplate: " ${after}|${trigger}|${before}|${line}|${after}|${lineNumber} ",
+        },
+      ],
+      true,
+    );
+    const constant = scanDocument(
+      "@h1 Same as source",
+      "constant",
+      [{ snippet: "@h1", level: 1, labelTemplate: "Same as source" }],
+      true,
+    )[0];
+    const untitled = scanDocument(
+      "@h1   ",
+      "untitled",
+      [{ snippet: "@h1", level: 1, labelTemplate: "${after}" }],
+      true,
+    )[0];
+    const lineNumber = scanDocument(
+      "@h1 source",
+      "line-number",
+      [{ snippet: "@h1", level: 1, labelTemplate: "Line ${lineNumber}" }],
+      true,
+    )[0];
+
+    assert.deepEqual(headings[0]?.titleRanges, [{ startCharacter: 0, endCharacter: 13 }]);
+    assert.deepEqual(headings[1]?.titleRanges, [{ startCharacter: 0, endCharacter: 10 }]);
+    assert.deepEqual(headings[2]?.titleRanges, [{ startCharacter: 0, endCharacter: 6 }]);
+    assert.deepEqual(constant?.titleRanges, []);
+    assert.deepEqual(untitled?.titleRanges, []);
+    assert.equal(lineNumber?.label, "Line 1");
+    assert.deepEqual(lineNumber?.titleRanges, []);
+  });
+
+  it("keeps delimiter precedence when directly constructed definitions conflict", (): void => {
+    const heading = scanDocument(
+      "@h1 [[ Title ]]",
+      "conflict",
+      [{
+        snippet: "@h1",
+        level: 1,
+        labelTemplate: "${after}",
+        labelDelimiters: { start: "[[", end: "]]" },
+        labelRegex: { pattern: ".*", replacement: "generated" },
+      }],
+      true,
+    )[0];
+
+    assert.equal(heading?.label, "Title");
+    assert.deepEqual(heading?.titleRanges, [{ startCharacter: 7, endCharacter: 12 }]);
   });
 });

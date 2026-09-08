@@ -2,7 +2,7 @@
   "name": "tiered-headings-navigator",
   "displayName": "Tiered Headings Navigator",
   "description": "Navigate and fold user-defined, tiered inline headings in text documents.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "natevmp",
   "private": true,
   "license": "MIT",
@@ -193,6 +193,12 @@
           "default": false,
           "markdownDescription": "When enabled, collapsing or expanding a parent heading in the **Headings** view folds or unfolds its editor section. This synchronization is one-way and requires custom heading folding, `editor.folding`, and the `auto` folding strategy."
         },
+        "tieredHeadings.editor.decorateOnlyTitle": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "markdownDescription": "Apply heading font styles only to source text contributing to the **Headings** label instead of the whole line. Removed delimiters and regex text are excluded; generated label text has no editor decoration. Gutter markers are unaffected."
+        },
         "tieredHeadings.editor.levelStyles": {
           "type": "array",
           "scope": "resource",
@@ -210,7 +216,7 @@
               "style": "italic"
             }
           ],
-          "markdownDescription": "Whole-line font styles for detected heading levels. Unlisted levels are unchanged; use an empty array to disable heading text styling.",
+          "markdownDescription": "Font styles for detected heading levels. Applied to the whole line unless `tieredHeadings.editor.decorateOnlyTitle` is enabled. Unlisted levels are unchanged; use an empty array to disable heading text styling.",
           "items": {
             "type": "object",
             "required": [
@@ -232,7 +238,7 @@
                   "italic",
                   "boldItalic"
                 ],
-                "description": "Font style applied to the entire detected heading line."
+                "description": "Font style applied to the detected heading line or its title, according to editor.decorateOnlyTitle."
               }
             }
           }

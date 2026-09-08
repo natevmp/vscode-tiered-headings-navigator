@@ -42,6 +42,8 @@ The first release shall:
     Explorer view to editor folding.
 17. Support optional per-trigger regex replacements for navigation labels in
     trusted workspaces.
+18. Optionally apply heading font styles only to source text contributing to the
+    pane label instead of the whole line.
 
 Browser-based VS Code support and Marketplace publication are not required for the initial release.
 
@@ -84,6 +86,7 @@ Proposed configuration:
   "tieredHeadings.gutter.enabled": true,
   "tieredHeadings.folding.enabled": true,
   "tieredHeadings.folding.syncFromNavigator": false,
+  "tieredHeadings.editor.decorateOnlyTitle": false,
   "tieredHeadings.editor.levelStyles": [
     { "level": 1, "style": "bold" },
     { "level": 2, "style": "boldItalic" },
@@ -257,7 +260,24 @@ Thus:
 
 ## Editor heading styles
 
-- Font weight and italics apply to the complete physical heading line.
+- Font weight and italics apply to the complete physical heading line by default.
+- `tieredHeadings.editor.decorateOnlyTitle` is a resource-scoped boolean that
+  defaults to `false`. When enabled, styles apply only to source fragments used
+  in the final pane label, after delimiter extraction, regex replacement,
+  template expansion, and trimming.
+- Source spans use half-open UTF-16 line offsets, independently of trigger ranges
+  used for navigation and gutter markers. Repeated, overlapping, or reordered
+  captures and placeholders produce deduplicated, source-ordered spans.
+- Removed delimiters and regex text are not styled unless another placeholder
+  explicitly includes them. `${before}`, `${trigger}`, and `${line}` retain their
+  source provenance; `${line}` may therefore still style a whole line.
+- Generated template/replacement literals, `${lineNumber}`, and untitled-label
+  fallback text have no source span. A label with no source-backed text receives
+  no text decoration in title-only mode, but retains its gutter marker.
+- Restricted Mode follows the same raw-label behavior as the pane without
+  compiling or executing label regexes.
+- Toggling modes clears the inactive decorations immediately; switching editors,
+  edits, and disposal clean up both modes without changing gutters or folding.
 - Defaults are bold for level 1, bold italic for level 2, italic for level 3, and normal for unlisted levels.
 - Styles are resource-scoped and update with the heading model.
 - Styling can be disabled independently from gutter markers and navigation.
@@ -286,6 +306,9 @@ Thus:
 - Switching active editors replaces the pane contents.
 - Exactly one correctly shaped gutter marker appears per detected heading line.
 - Default whole-line styles match the configured level 1–3 behavior, while higher levels remain normal.
+- Title-only styling highlights exact source fragments, including delimited and
+  regex-captured titles, without styling generated text. Changing the toggle or
+  editing unsaved text updates ranges without leaving whole-line styles behind.
 - The Show Headings command reveals and focuses the Explorer view.
 - Invalid configuration reports an actionable warning without disabling valid triggers.
 - Exact, non-overlapping delimiter pairs extract `${after}` atomically; incomplete pairs preserve the original after text without runtime warnings.

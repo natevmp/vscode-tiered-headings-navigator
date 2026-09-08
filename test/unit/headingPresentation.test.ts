@@ -24,6 +24,7 @@ function createHeading(
     startCharacter,
     endCharacter,
     sourceLine: `@h ${id}`,
+    titleRanges: [{ startCharacter: 3, endCharacter: 3 + id.length }],
   };
 }
 

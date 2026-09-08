@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 
 import * as vscode from "vscode";
 
+import type {
+  HeadingDecorationId,
+  HeadingDecorationSpecification,
+} from "../../src/decorationLifecycle";
+import { readHeadingSettings } from "../../src/settings";
+
+interface HeadingTitleRangeSnapshot {
+  readonly startCharacter: number;
+  readonly endCharacter: number;
+}
+
 interface HeadingSnapshot {
   readonly id: string;
   readonly label: string;
@@ -9,6 +20,7 @@ interface HeadingSnapshot {
   readonly line: number;
   readonly startCharacter: number;
   readonly endCharacter: number;
+  readonly titleRanges: readonly HeadingTitleRangeSnapshot[];
   readonly documentIdentity: string;
 }
 
@@ -32,6 +44,26 @@ interface TreeSelectionItem {
   readonly line: number;
 }
 
+interface SerializedDecorationRange {
+  readonly startLine: number;
+  readonly startCharacter: number;
+  readonly endLine: number;
+  readonly endCharacter: number;
+}
+
+interface DecorationApplicationSnapshot {
+  readonly documentIdentity: string;
+  readonly specification: HeadingDecorationSpecification;
+  readonly range_rangeId: readonly SerializedDecorationRange[];
+}
+
+type DecorationRangeTuple = readonly [
+  startLine: number,
+  startCharacter: number,
+  endLine: number,
+  endCharacter: number,
+];
+
 const extensionId = "natevmp.tiered-headings-navigator";
 const inspectCommand = "_tieredHeadings.getActiveSnapshot";
 const inspectTargetsCommand = "_tieredHeadings.getTreeNavigationTargets";
@@ -39,6 +71,7 @@ const inspectViewVisibleCommand = "_tieredHeadings.isViewVisible";
 const inspectTreeItemsCommand = "_tieredHeadings.getTreeItems";
 const inspectFoldingRangesCommand = "_tieredHeadings.getFoldingRanges";
 const inspectTreeSelectionCommand = "_tieredHeadings.getTreeSelection";
+const inspectDecorationsCommand = "_tieredHeadings.getDecorations";
 const focusTreeItemCommand = "_tieredHeadings.focusTreeItem";
 const applyNavigatorFoldingStateCommand = "_tieredHeadings.applyNavigatorFoldingState";
 const waitForPendingInteractionsCommand = "_tieredHeadings.waitForPendingInteractions";
@@ -140,6 +173,63 @@ async function readActiveSnapshot(): Promise<ActiveHeadingSnapshot | undefined> 
   return vscode.commands.executeCommand<ActiveHeadingSnapshot | undefined>(inspectCommand);
 }
 
+async function readDecorationApplications(): Promise<readonly DecorationApplicationSnapshot[]> {
+  return await vscode.commands.executeCommand<readonly DecorationApplicationSnapshot[]>(
+    inspectDecorationsCommand,
+  ) ?? [];
+}
+
+async function waitForDecorationApplications(
+  document: vscode.TextDocument,
+): Promise<ReadonlyMap<HeadingDecorationId, DecorationApplicationSnapshot>> {
+  const documentIdentity = document.uri.toString();
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const application_applicationId = await readDecorationApplications();
+    if (
+      application_applicationId.length === 10
+      && application_applicationId.every(
+        (application: DecorationApplicationSnapshot): boolean => (
+          application.documentIdentity === documentIdentity
+        ),
+      )
+    ) {
+      return new Map(application_applicationId.map(
+        (application): [HeadingDecorationId, DecorationApplicationSnapshot] => [
+          application.specification.id,
+          application,
+        ],
+      ));
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  throw new Error(`Decoration applications for ${documentIdentity} were not captured.`);
+}
+
+function getDecorationApplication(
+  applicationById: ReadonlyMap<HeadingDecorationId, DecorationApplicationSnapshot>,
+  decorationId: HeadingDecorationId,
+): DecorationApplicationSnapshot {
+  const application = applicationById.get(decorationId);
+  if (application === undefined) {
+    throw new Error(`Decoration application ${decorationId} was not captured.`);
+  }
+  return application;
+}
+
+function decorationRanges(
+  application: DecorationApplicationSnapshot,
+): DecorationRangeTuple[] {
+  return application.range_rangeId.map((range): DecorationRangeTuple => [
+    range.startLine,
+    range.startCharacter,
+    range.endLine,
+    range.endCharacter,
+  ]);
+}
+
 async function readTreeNavigationTargets(): Promise<readonly HeadingNavigationTarget[]> {
   return vscode.commands.executeCommand<readonly HeadingNavigationTarget[]>(
     inspectTargetsCommand,
@@ -220,6 +310,30 @@ async function waitForNewerModel(
     });
   }
   throw new Error("The heading model did not refresh before the timeout.");
+}
+
+async function waitForHeadingLabel(
+  document: vscode.TextDocument,
+  expectedLabel: string,
+): Promise<ActiveHeadingSnapshot> {
+  const documentIdentity = document.uri.toString();
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const snapshot = await readActiveSnapshot();
+    if (
+      snapshot?.documentIdentity === documentIdentity
+      && snapshot.heading_headingId.length === 1
+      && snapshot.heading_headingId[0]?.label === expectedLabel
+    ) {
+      return snapshot;
+    }
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  throw new Error(
+    `The active heading model for ${documentIdentity} did not reach label ${expectedLabel}.`,
+  );
 }
 
 async function waitForViewVisibility(expectedVisibility: boolean): Promise<void> {
@@ -442,6 +556,310 @@ suite("Tiered Headings extension", (): void => {
 
     await openSampleDocument();
     await waitForHeadingCount(3);
+  });
+
+  test("switches actual text decorations between whole lines and title ranges", async (): Promise<void> => {
+    const editor = await openRegexLabelDocument();
+    const { document } = editor;
+    const configuration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const settingName = "editor.decorateOnlyTitle";
+    const previousValue = configuration.inspect<boolean>(settingName)?.workspaceFolderValue;
+
+    try {
+      assert.equal(configuration.get(settingName), false);
+      await vscode.commands.executeCommand("tieredHeadings.refresh");
+      const wholeLineSnapshot = await waitForHeadingLabel(document, "This is the title");
+      const heading = wholeLineSnapshot.heading_headingId[0];
+      if (heading === undefined) {
+        throw new Error("Expected the regex-label heading.");
+      }
+      assert.deepEqual(heading.titleRanges, [{
+        startCharacter: 7,
+        endCharacter: 24,
+      }]);
+
+      let applicationById = await waitForDecorationApplications(document);
+      assert.deepEqual(
+        ([
+          "bold",
+          "italic",
+          "boldItalic",
+          "titleBold",
+          "titleItalic",
+          "titleBoldItalic",
+        ] as const).map(
+          (decorationId): HeadingDecorationSpecification => (
+            getDecorationApplication(applicationById, decorationId).specification
+          ),
+        ),
+        [
+          { id: "bold", kind: "text", isWholeLine: true, fontWeight: "bold" },
+          { id: "italic", kind: "text", isWholeLine: true, fontStyle: "italic" },
+          {
+            id: "boldItalic",
+            kind: "text",
+            isWholeLine: true,
+            fontWeight: "bold",
+            fontStyle: "italic",
+          },
+          { id: "titleBold", kind: "text", isWholeLine: false, fontWeight: "bold" },
+          { id: "titleItalic", kind: "text", isWholeLine: false, fontStyle: "italic" },
+          {
+            id: "titleBoldItalic",
+            kind: "text",
+            isWholeLine: false,
+            fontWeight: "bold",
+            fontStyle: "italic",
+          },
+        ],
+      );
+      const bold = getDecorationApplication(applicationById, "bold");
+      assert.deepEqual(decorationRanges(bold), [[
+        0,
+        0,
+        0,
+        document.lineAt(0).text.length,
+      ]]);
+      const titleBold = getDecorationApplication(applicationById, "titleBold");
+      assert.deepEqual(decorationRanges(titleBold), []);
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "gutterFilledCircle")),
+        [[0, 3, 0, 6]],
+      );
+
+      await configuration.update(
+        settingName,
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      const titleOnlySnapshot = await waitForNewerModel(
+        wholeLineSnapshot.modelGeneration,
+        1,
+      );
+      assert.equal(titleOnlySnapshot.heading_headingId[0]?.id, heading.id);
+      assert.equal(titleOnlySnapshot.heading_headingId[0]?.startCharacter, 3);
+      assert.equal(titleOnlySnapshot.heading_headingId[0]?.endCharacter, 6);
+      assert.deepEqual(titleOnlySnapshot.heading_headingId[0]?.titleRanges, heading.titleRanges);
+
+      applicationById = await waitForDecorationApplications(document);
+      (["bold", "italic", "boldItalic"] as const).forEach(
+        (decorationId): void => {
+          assert.deepEqual(
+            decorationRanges(getDecorationApplication(applicationById, decorationId)),
+            [],
+          );
+        },
+      );
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "titleBold")),
+        [[0, 7, 0, 24]],
+      );
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "titleItalic")),
+        [],
+      );
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "titleBoldItalic")),
+        [],
+      );
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "gutterFilledCircle")),
+        [[0, 3, 0, 6]],
+      );
+
+      const navigationTarget = await getTreeNavigationTarget(heading.id);
+      await vscode.commands.executeCommand("tieredHeadings.navigate", navigationTarget);
+      assert.equal(editor.selection.active.line, 0);
+      assert.equal(editor.selection.active.character, 3);
+
+      await configuration.update(
+        settingName,
+        false,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      const restoredSnapshot = await waitForNewerModel(
+        titleOnlySnapshot.modelGeneration,
+        1,
+      );
+      assert.equal(restoredSnapshot.heading_headingId[0]?.id, heading.id);
+      applicationById = await waitForDecorationApplications(document);
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "bold")),
+        [[0, 0, 0, document.lineAt(0).text.length]],
+      );
+      (["titleBold", "titleItalic", "titleBoldItalic"] as const).forEach(
+        (decorationId): void => {
+          assert.deepEqual(
+            decorationRanges(getDecorationApplication(applicationById, decorationId)),
+            [],
+          );
+        },
+      );
+    } finally {
+      await configuration.update(
+        settingName,
+        previousValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
+  });
+
+  test("updates title decoration ranges after unsaved UTF-16 edits", async (): Promise<void> => {
+    const editor = await openRegexLabelDocument();
+    const { document } = editor;
+    const configuration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const settingName = "editor.decorateOnlyTitle";
+    const previousValue = configuration.inspect<boolean>(settingName)?.workspaceFolderValue;
+
+    try {
+      const initialSnapshot = await waitForHeadingLabel(document, "This is the title");
+      await configuration.update(
+        settingName,
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      const enabledSnapshot = await waitForNewerModel(initialSnapshot.modelGeneration, 1);
+      const inserted = await editor.edit((builder): void => {
+        builder.insert(new vscode.Position(0, 0), "🚀 ");
+      });
+      assert.equal(inserted, true);
+      assert.equal(document.isDirty, true);
+
+      const editedSnapshot = await waitForNewerModel(enabledSnapshot.modelGeneration, 1);
+      assert.equal(editedSnapshot.heading_headingId[0]?.startCharacter, 6);
+      assert.equal(editedSnapshot.heading_headingId[0]?.endCharacter, 9);
+      assert.deepEqual(editedSnapshot.heading_headingId[0]?.titleRanges, [{
+        startCharacter: 10,
+        endCharacter: 27,
+      }]);
+      const applicationById = await waitForDecorationApplications(document);
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "titleBold")),
+        [[0, 10, 0, 27]],
+      );
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "gutterFilledCircle")),
+        [[0, 6, 0, 9]],
+      );
+    } finally {
+      try {
+        await openRegexLabelDocument();
+      } finally {
+        await configuration.update(
+          settingName,
+          previousValue,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+        await openSampleDocument();
+        await waitForHeadingCount(3);
+      }
+    }
+  });
+
+  test("decorates only indexed regex capture sources on the minimum runtime", async (): Promise<void> => {
+    const editor = await openRegexLabelDocument();
+    const { document } = editor;
+    const configuration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const previousDecorateValue = configuration.inspect<boolean>(
+      "editor.decorateOnlyTitle",
+    )?.workspaceFolderValue;
+    const previousTriggers = configuration.inspect<unknown>("triggers")?.workspaceFolderValue;
+
+    try {
+      await configuration.update(
+        "editor.decorateOnlyTitle",
+        true,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await configuration.update(
+        "triggers",
+        [{
+          snippet: "@h1",
+          level: 1,
+          labelTemplate: "${after}",
+          labelRegex: {
+            pattern: "^\\s*(This) is the (title)\\s*-+\\s*$",
+            replacement: "$2 / $1",
+          },
+        }],
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+
+      const snapshot = await waitForHeadingLabel(document, "title / This");
+      assert.deepEqual(snapshot.heading_headingId[0]?.titleRanges, [
+        { startCharacter: 7, endCharacter: 11 },
+        { startCharacter: 19, endCharacter: 24 },
+      ]);
+      const applicationById = await waitForDecorationApplications(document);
+      assert.deepEqual(
+        decorationRanges(getDecorationApplication(applicationById, "titleBold")),
+        [
+          [0, 7, 0, 11],
+          [0, 19, 0, 24],
+        ],
+      );
+    } finally {
+      await configuration.update(
+        "triggers",
+        previousTriggers,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await configuration.update(
+        "editor.decorateOnlyTitle",
+        previousDecorateValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
+  });
+
+  test("falls back from a malformed title-decoration setting with an actionable issue", async (): Promise<void> => {
+    const { document } = await openSampleDocument();
+    const configuration = vscode.workspace.getConfiguration(
+      "tieredHeadings",
+      document.uri,
+    );
+    const settingName = "editor.decorateOnlyTitle";
+    const previousValue = configuration.inspect<unknown>(settingName)?.workspaceFolderValue;
+
+    try {
+      await configuration.update(
+        settingName,
+        "title-only",
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      const settings = readHeadingSettings(document);
+      assert.equal(settings.decorateOnlyTitle, false);
+      const issue = settings.issue_issueId.find(
+        (candidate): boolean => candidate.settingKey
+          === "tieredHeadings.editor.decorateOnlyTitle",
+      );
+      assert.notEqual(issue, undefined);
+      assert.equal(
+        issue?.message,
+        "tieredHeadings.editor.decorateOnlyTitle must be a boolean; using false.",
+      );
+    } finally {
+      await configuration.update(
+        settingName,
+        previousValue,
+        vscode.ConfigurationTarget.WorkspaceFolder,
+      );
+      await openSampleDocument();
+      await waitForHeadingCount(3);
+    }
   });
 
   test("provides native plaintext folding ranges by default", async (): Promise<void> => {

@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 
-import { DecorationManager } from "./decorationManager";
+import {
+  DecorationManager,
+  type DecorationApplicationObserver,
+} from "./decorationManager";
+import type {
+  HeadingDecorationId,
+  HeadingDecorationSpecification,
+} from "./decorationLifecycle";
 import { HeadingController, type ActiveHeadingSnapshot } from "./headingController";
 import { HeadingFoldingProvider } from "./headingFoldingProvider";
 import { HeadingTreeProvider } from "./headingTreeProvider";
@@ -9,13 +16,46 @@ import { affectsHeadingSettings } from "./settings";
 
 const viewId = "tieredHeadings.explorer";
 
+interface SerializedDecorationRange {
+  readonly startLine: number;
+  readonly startCharacter: number;
+  readonly endLine: number;
+  readonly endCharacter: number;
+}
+
+interface DecorationApplicationSnapshot {
+  readonly documentIdentity: string;
+  readonly specification: HeadingDecorationSpecification;
+  readonly range_rangeId: readonly SerializedDecorationRange[];
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new HeadingTreeProvider(context.extensionUri);
   const treeView = vscode.window.createTreeView(viewId, {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
-  const decorationManager = new DecorationManager(context.extensionUri);
+  const decorationApplicationById = context.extensionMode === vscode.ExtensionMode.Test
+    ? new Map<HeadingDecorationId, DecorationApplicationSnapshot>()
+    : undefined;
+  const decorationObserver: DecorationApplicationObserver | undefined =
+    decorationApplicationById === undefined
+      ? undefined
+      : (editor, specification, range_rangeId): void => {
+        decorationApplicationById.set(specification.id, {
+          documentIdentity: editor.document.uri.toString(),
+          specification: { ...specification },
+          range_rangeId: range_rangeId.map((range: vscode.Range): SerializedDecorationRange => ({
+            startLine: range.start.line,
+            startCharacter: range.start.character,
+            endLine: range.end.line,
+            endCharacter: range.end.character,
+          })),
+        });
+      };
+  const decorationManager = decorationObserver === undefined
+    ? new DecorationManager(context.extensionUri)
+    : new DecorationManager(context.extensionUri, decorationObserver);
   const outputChannel = vscode.window.createOutputChannel("Tiered Headings");
   const controller = new HeadingController(
     provider,
@@ -125,6 +165,14 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand(
         "_tieredHeadings.getTreeNavigationTargets",
         (): readonly unknown[] => provider.getNavigationTargetsForTesting(),
+      ),
+      vscode.commands.registerCommand(
+        "_tieredHeadings.getDecorations",
+        (): readonly DecorationApplicationSnapshot[] => (
+          decorationApplicationById === undefined
+            ? []
+            : [...decorationApplicationById.values()]
+        ),
       ),
       vscode.commands.registerCommand(
         "_tieredHeadings.isViewVisible",

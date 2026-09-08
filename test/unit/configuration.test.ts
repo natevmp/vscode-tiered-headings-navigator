@@ -80,14 +80,14 @@ describe("parseTriggerDefinitions", (): void => {
         level: 1,
         labelTemplate: "${after}",
         labelRegex: { pattern: "\\s*-+\\s*$", replacement: "" },
-        labelExpression: /\s*-+\s*$/u,
+        labelExpression: new RegExp("\\s*-+\\s*$", "du"),
       },
       {
         snippet: "@h2",
         level: 2,
         labelTemplate: "${after}",
         labelRegex: { pattern: "^\\s*(?<title>.+?)\\s*$", replacement: "$<title>" },
-        labelExpression: /^\s*(?<title>.+?)\s*$/u,
+        labelExpression: new RegExp("^\\s*(?<title>.+?)\\s*$", "du"),
       },
     ]);
     assert.deepEqual(result.issue_issueId, []);

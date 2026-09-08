@@ -5,7 +5,7 @@ import {
   type HeadingMarkerRange,
 } from "./headingPresentation";
 import { groupHeadingsByTextStyle } from "./headingStyles";
-import type { Heading, HeadingStyleMap } from "./model";
+import type { Heading, HeadingStyleMap, HeadingTitleRange } from "./model";
 
 export type HeadingDecorationId =
   | "gutterFilledCircle"
@@ -14,7 +14,10 @@ export type HeadingDecorationId =
   | "gutterDash"
   | "bold"
   | "italic"
-  | "boldItalic";
+  | "boldItalic"
+  | "titleBold"
+  | "titleItalic"
+  | "titleBoldItalic";
 
 export interface GutterDecorationSpecification {
   readonly id: HeadingDecorationId;
@@ -27,6 +30,7 @@ export interface GutterDecorationSpecification {
 export interface TextDecorationSpecification {
   readonly id: HeadingDecorationId;
   readonly kind: "text";
+  readonly isWholeLine: boolean;
   readonly fontWeight?: "bold";
   readonly fontStyle?: "italic";
 }
@@ -41,6 +45,7 @@ export interface HeadingDecorationAdapter<Editor, Decoration, Range> {
   ) => Decoration;
   readonly createTriggerRange: (range: HeadingMarkerRange) => Range;
   readonly createLineRange: (editor: Editor, heading: Heading) => Range;
+  readonly createTitleRange: (heading: Heading, range: HeadingTitleRange) => Range;
   readonly setDecorations: (
     editor: Editor,
     decoration: Decoration,
@@ -76,18 +81,37 @@ const dashSpecification = createGutterSpecification("gutterDash", "dash");
 const boldSpecification: TextDecorationSpecification = Object.freeze({
   id: "bold",
   kind: "text",
+  isWholeLine: true,
   fontWeight: "bold",
 });
 const italicSpecification: TextDecorationSpecification = Object.freeze({
   id: "italic",
   kind: "text",
+  isWholeLine: true,
   fontStyle: "italic",
 });
 const boldItalicSpecification: TextDecorationSpecification = Object.freeze({
   id: "boldItalic",
   kind: "text",
+  isWholeLine: true,
   fontWeight: "bold",
   fontStyle: "italic",
+});
+
+const titleBoldSpecification: TextDecorationSpecification = Object.freeze({
+  ...boldSpecification,
+  id: "titleBold",
+  isWholeLine: false,
+});
+const titleItalicSpecification: TextDecorationSpecification = Object.freeze({
+  ...italicSpecification,
+  id: "titleItalic",
+  isWholeLine: false,
+});
+const titleBoldItalicSpecification: TextDecorationSpecification = Object.freeze({
+  ...boldItalicSpecification,
+  id: "titleBoldItalic",
+  isWholeLine: false,
 });
 
 /** Owns editor-independent decoration application, cleanup, and disposal. */
@@ -106,6 +130,12 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
 
   private readonly boldItalicDecoration: Decoration;
 
+  private readonly titleBoldDecoration: Decoration;
+
+  private readonly titleItalicDecoration: Decoration;
+
+  private readonly titleBoldItalicDecoration: Decoration;
+
   private decoratedEditor: Editor | undefined;
 
   private disposed = false;
@@ -122,6 +152,9 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
     this.boldDecoration = adapter.createDecoration(boldSpecification);
     this.italicDecoration = adapter.createDecoration(italicSpecification);
     this.boldItalicDecoration = adapter.createDecoration(boldItalicSpecification);
+    this.titleBoldDecoration = adapter.createDecoration(titleBoldSpecification);
+    this.titleItalicDecoration = adapter.createDecoration(titleItalicSpecification);
+    this.titleBoldItalicDecoration = adapter.createDecoration(titleBoldItalicSpecification);
   }
 
   public update(
@@ -129,6 +162,7 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
     heading_headingId: readonly Heading[],
     gutterEnabled: boolean,
     styleByLevel: HeadingStyleMap,
+    decorateOnlyTitle = false,
   ): void {
     if (this.disposed) {
       return;
@@ -158,9 +192,15 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
     const createLineRange = (heading: Heading): Range => (
       this.adapter.createLineRange(editor, heading)
     );
-    const boldRange_headingId = styleGroups.heading_boldId.map(createLineRange);
-    const italicRange_headingId = styleGroups.heading_italicId.map(createLineRange);
-    const boldItalicRange_headingId = styleGroups.heading_boldItalicId.map(createLineRange);
+    const createTitleRanges = (heading: Heading): Range[] => heading.titleRanges.map(
+      (range: HeadingTitleRange): Range => this.adapter.createTitleRange(heading, range),
+    );
+    const boldRange_headingId = decorateOnlyTitle ? [] : styleGroups.heading_boldId.map(createLineRange);
+    const italicRange_headingId = decorateOnlyTitle ? [] : styleGroups.heading_italicId.map(createLineRange);
+    const boldItalicRange_headingId = decorateOnlyTitle ? [] : styleGroups.heading_boldItalicId.map(createLineRange);
+    const titleBoldRanges = decorateOnlyTitle ? styleGroups.heading_boldId.flatMap(createTitleRanges) : [];
+    const titleItalicRanges = decorateOnlyTitle ? styleGroups.heading_italicId.flatMap(createTitleRanges) : [];
+    const titleBoldItalicRanges = decorateOnlyTitle ? styleGroups.heading_boldItalicId.flatMap(createTitleRanges) : [];
 
     this.adapter.setDecorations(
       editor,
@@ -181,6 +221,10 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
       this.boldItalicDecoration,
       boldItalicRange_headingId,
     );
+    // Always clear the inactive mode so toggles cannot leave whole-line styles behind.
+    this.adapter.setDecorations(editor, this.titleBoldDecoration, titleBoldRanges);
+    this.adapter.setDecorations(editor, this.titleItalicDecoration, titleItalicRanges);
+    this.adapter.setDecorations(editor, this.titleBoldItalicDecoration, titleBoldItalicRanges);
     this.decoratedEditor = editor;
   }
 
@@ -192,6 +236,9 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
     this.adapter.setDecorations(editor, this.boldDecoration, []);
     this.adapter.setDecorations(editor, this.italicDecoration, []);
     this.adapter.setDecorations(editor, this.boldItalicDecoration, []);
+    this.adapter.setDecorations(editor, this.titleBoldDecoration, []);
+    this.adapter.setDecorations(editor, this.titleItalicDecoration, []);
+    this.adapter.setDecorations(editor, this.titleBoldItalicDecoration, []);
   }
 
   public clear(): void {
@@ -213,6 +260,9 @@ export class HeadingDecorationLifecycle<Editor, Decoration, Range> {
     this.adapter.disposeDecoration(this.boldDecoration);
     this.adapter.disposeDecoration(this.italicDecoration);
     this.adapter.disposeDecoration(this.boldItalicDecoration);
+    this.adapter.disposeDecoration(this.titleBoldDecoration);
+    this.adapter.disposeDecoration(this.titleItalicDecoration);
+    this.adapter.disposeDecoration(this.titleBoldItalicDecoration);
     this.disposed = true;
   }
 }

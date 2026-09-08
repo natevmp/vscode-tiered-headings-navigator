@@ -40,6 +40,7 @@ function parseBooleanSetting(
 
 export interface HeadingSettings {
   readonly caseSensitive: boolean;
+  readonly decorateOnlyTitle: boolean;
   readonly foldingEnabled: boolean;
   readonly foldingSyncFromNavigator: boolean;
   readonly gutterEnabled: boolean;
@@ -76,6 +77,11 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
     "tieredHeadings.folding.syncFromNavigator",
   );
   const rawTriggers = configuration.get<unknown>("triggers", []);
+  const decorateOnlyTitleResult = parseBooleanSetting(
+    configuration.get<unknown>("editor.decorateOnlyTitle", false),
+    false,
+    "tieredHeadings.editor.decorateOnlyTitle",
+  );
   const triggerResult = parseTriggerDefinitions(
     rawTriggers,
     caseSensitiveResult.value,
@@ -90,6 +96,9 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
   if (caseSensitiveResult.issue !== undefined) {
     issue_issueId.push(caseSensitiveResult.issue);
   }
+  if (decorateOnlyTitleResult.issue !== undefined) {
+    issue_issueId.push(decorateOnlyTitleResult.issue);
+  }
   if (gutterEnabledResult.issue !== undefined) {
     issue_issueId.push(gutterEnabledResult.issue);
   }
@@ -103,6 +112,7 @@ export function readHeadingSettings(document: vscode.TextDocument): HeadingSetti
 
   return {
     caseSensitive: caseSensitiveResult.value,
+    decorateOnlyTitle: decorateOnlyTitleResult.value,
     foldingEnabled: foldingEnabledResult.value,
     foldingSyncFromNavigator: foldingSyncFromNavigatorResult.value,
     gutterEnabled: gutterEnabledResult.value,

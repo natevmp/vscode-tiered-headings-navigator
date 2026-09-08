@@ -15,6 +15,7 @@ function makeHeading(label: string, level: number, line: number): Heading {
     startCharacter: 0,
     endCharacter: 3,
     sourceLine: label,
+    titleRanges: [{ startCharacter: 0, endCharacter: label.length }],
   };
 }
 

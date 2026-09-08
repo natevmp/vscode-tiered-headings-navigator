@@ -35,7 +35,11 @@ const decorationId_orderId: readonly HeadingDecorationId[] = [
   "bold",
   "italic",
   "boldItalic",
+  "titleBold",
+  "titleItalic",
+  "titleBoldItalic",
 ];
+const decorationCount = decorationId_orderId.length;
 
 function createHeading(
   id: string,
@@ -55,6 +59,7 @@ function createHeading(
     startCharacter,
     endCharacter,
     sourceLine: `@h ${id}`,
+    titleRanges: [{ startCharacter: 3, endCharacter: 3 + id.length }],
   };
 }
 
@@ -75,6 +80,9 @@ function createHarness(): LifecycleHarness {
     ),
     createLineRange: (editor, heading): string => (
       `${editor.name}:line:${String(heading.line)}:${heading.id}`
+    ),
+    createTitleRange: (heading, range): string => (
+      `title:${String(heading.line)}:${String(range.startCharacter)}-${String(range.endCharacter)}`
     ),
     setDecorations: (editor, decoration, range_rangeId): void => {
       editor.call_callId.push({
@@ -101,7 +109,7 @@ function getDecoration(
 }
 
 function getCall(editor: FakeEditor, id: HeadingDecorationId): DecorationCall {
-  const call = editor.call_callId.find(
+  const call = [...editor.call_callId].reverse().find(
     (candidate: DecorationCall): boolean => candidate.decorationId === id,
   );
   if (call === undefined) {
@@ -130,7 +138,7 @@ describe("HeadingDecorationLifecycle", (): void => {
       ["gutterDash", "marker-dash.svg"],
     ]);
 
-    assert.equal(harness.decorationById.size, 7);
+    assert.equal(harness.decorationById.size, decorationCount);
     expectedAssetById.forEach((assetName: string, id: HeadingDecorationId): void => {
       const specification = getDecoration(harness, id).specification;
       assert.equal(specification.kind, "gutter");
@@ -206,26 +214,110 @@ describe("HeadingDecorationLifecycle", (): void => {
     ]);
   });
 
-  it("clears all seven decorations when switching editors and when cleared", (): void => {
+  it("creates separate whole-line and title-only font decorations", (): void => {
+    const harness = createHarness();
+    const styles = ["bold", "italic", "boldItalic"] as const;
+    const titleStyles = ["titleBold", "titleItalic", "titleBoldItalic"] as const;
+    styles.forEach((id, index): void => {
+      const wholeLine = getDecoration(harness, id).specification;
+      const title = getDecoration(harness, titleStyles[index]!).specification;
+      assert.equal(wholeLine.kind, "text");
+      assert.equal(title.kind, "text");
+      if (wholeLine.kind !== "text" || title.kind !== "text") {
+        return;
+      }
+      assert.equal(wholeLine.isWholeLine, true);
+      assert.equal(title.isWholeLine, false);
+      assert.equal(title.fontWeight, wholeLine.fontWeight);
+      assert.equal(title.fontStyle, wholeLine.fontStyle);
+    });
+  });
+
+  it("applies disjoint title spans by level without changing gutter ranges", (): void => {
+    const harness = createHarness();
+    const editor = createEditor("editor");
+    const heading_headingId: Heading[] = [
+      {
+        ...createHeading("Alpha Beta", 1, 7, 3, 5),
+        sourceLine: "// @h [Alpha] / [Beta]",
+        titleRanges: [
+          { startCharacter: 7, endCharacter: 12 },
+          { startCharacter: 17, endCharacter: 21 },
+        ],
+      },
+      createHeading("italic", 2, 8, 0, 2),
+      createHeading("both", 3, 9, 0, 2),
+      createHeading("normal", 4, 10, 0, 2),
+    ];
+    const styleByLevel: HeadingStyleMap = new Map([
+      [1, "bold"], [2, "italic"], [3, "boldItalic"],
+    ]);
+    harness.lifecycle.update(editor, heading_headingId, true, styleByLevel, true);
+
+    assert.deepEqual(getCall(editor, "titleBold").range_rangeId, [
+      "title:7:7-12", "title:7:17-21",
+    ]);
+    assert.deepEqual(getCall(editor, "titleItalic").range_rangeId, ["title:8:3-9"]);
+    assert.deepEqual(getCall(editor, "titleBoldItalic").range_rangeId, ["title:9:3-7"]);
+    for (const id of ["bold", "italic", "boldItalic"] as const) {
+      assert.deepEqual(getCall(editor, id).range_rangeId, []);
+    }
+    assert.deepEqual(getCall(editor, "gutterFilledCircle").range_rangeId, ["trigger:7:3-5"]);
+    assert.deepEqual(getCall(editor, "gutterDash").range_rangeId, ["trigger:10:0-2"]);
+  });
+
+  it("clears the inactive font mode when toggling on and off", (): void => {
+    const harness = createHarness();
+    const editor = createEditor("editor");
+    const headings = [createHeading("title", 1, 0, 0, 2)];
+    const styleByLevel: HeadingStyleMap = new Map([[1, "bold"]]);
+    harness.lifecycle.update(editor, headings, true, styleByLevel);
+    assert.deepEqual(getCall(editor, "bold").range_rangeId, ["editor:line:0:title"]);
+    assert.deepEqual(getCall(editor, "titleBold").range_rangeId, []);
+
+    harness.lifecycle.update(editor, headings, false, styleByLevel, true);
+    assert.deepEqual(getCall(editor, "bold").range_rangeId, []);
+    assert.deepEqual(getCall(editor, "titleBold").range_rangeId, ["title:0:3-8"]);
+    assert.deepEqual(getCall(editor, "gutterFilledCircle").range_rangeId, []);
+
+    harness.lifecycle.update(editor, headings, true, styleByLevel, false);
+    assert.deepEqual(getCall(editor, "bold").range_rangeId, ["editor:line:0:title"]);
+    assert.deepEqual(getCall(editor, "titleBold").range_rangeId, []);
+  });
+
+  it("leaves generated-only labels unstyled in title mode and respects disabled styles", (): void => {
+    const harness = createHarness();
+    const editor = createEditor("editor");
+    const heading = { ...createHeading("generated", 1, 0, 0, 2), titleRanges: [] };
+    harness.lifecycle.update(editor, [heading], true, new Map([[1, "bold"]]), true);
+    assert.deepEqual(getCall(editor, "bold").range_rangeId, []);
+    assert.deepEqual(getCall(editor, "titleBold").range_rangeId, []);
+    assert.deepEqual(getCall(editor, "gutterFilledCircle").range_rangeId, ["trigger:0:0-2"]);
+
+    harness.lifecycle.update(editor, [createHeading("title", 1, 0, 0, 2)], false, new Map(), true);
+    assertAllDecorationsCleared(editor.call_callId.slice(-decorationCount));
+  });
+
+  it("clears every decoration when switching editors and when cleared", (): void => {
     const harness = createHarness();
     const oldEditor = createEditor("old");
     const newEditor = createEditor("new");
     const heading_headingId = [createHeading("one", 1, 0, 0, 3)];
 
-    harness.lifecycle.update(oldEditor, heading_headingId, true, new Map());
+    harness.lifecycle.update(oldEditor, heading_headingId, true, new Map([[1, "bold"]]), true);
     harness.lifecycle.update(newEditor, heading_headingId, true, new Map());
 
-    const oldClearCall_callId = oldEditor.call_callId.slice(7);
-    assert.equal(oldClearCall_callId.length, 7);
+    const oldClearCall_callId = oldEditor.call_callId.slice(decorationCount);
+    assert.equal(oldClearCall_callId.length, decorationCount);
     assertAllDecorationsCleared(oldClearCall_callId);
-    assert.equal(newEditor.call_callId.length, 7);
+    assert.equal(newEditor.call_callId.length, decorationCount);
 
     harness.lifecycle.clear();
-    const newClearCall_callId = newEditor.call_callId.slice(7);
-    assert.equal(newClearCall_callId.length, 7);
+    const newClearCall_callId = newEditor.call_callId.slice(decorationCount);
+    assert.equal(newClearCall_callId.length, decorationCount);
     assertAllDecorationsCleared(newClearCall_callId);
     harness.lifecycle.clear();
-    assert.equal(newEditor.call_callId.length, 14, "clear is idempotent without an editor");
+    assert.equal(newEditor.call_callId.length, decorationCount * 2, "clear is idempotent without an editor");
   });
 
   it("clears an active editor and disposes every decoration exactly once", (): void => {
@@ -240,15 +332,15 @@ describe("HeadingDecorationLifecycle", (): void => {
 
     harness.lifecycle.dispose();
 
-    const clearCall_callId = editor.call_callId.slice(7);
-    assert.equal(clearCall_callId.length, 7);
+    const clearCall_callId = editor.call_callId.slice(decorationCount);
+    assert.equal(clearCall_callId.length, decorationCount);
     assertAllDecorationsCleared(clearCall_callId);
     decorationId_orderId.forEach((id: HeadingDecorationId): void => {
       assert.equal(getDecoration(harness, id).disposeCount, 1);
     });
 
     harness.lifecycle.dispose();
-    assert.equal(editor.call_callId.length, 14);
+    assert.equal(editor.call_callId.length, decorationCount * 2);
     decorationId_orderId.forEach((id: HeadingDecorationId): void => {
       assert.equal(getDecoration(harness, id).disposeCount, 1);
     });
